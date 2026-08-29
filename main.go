@@ -4,20 +4,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/maxence-charriere/go-app/v11/pkg/app"
 )
 
-const (
-	StartTime string = "2026-08-29T10:20:44"
-)
-
 func main() {
-
-	parsedDate, _ := time.Parse("2006-01-02T15:04:05", StartTime)
-
-	app.Route("/", func() app.Composer { return &hello{startTime: parsedDate} })
+	app.Route("/", func() app.Composer { return &hello{} })
 	app.RunWhenOnBrowser()
 
 	// Standard HTTP routing (server-side):
@@ -32,18 +26,33 @@ func main() {
 	}
 }
 
-func elapsedFrom(start time.Time, current time.Time) time.Duration {
-	return current.Sub(start)
-}
-
 type hello struct {
 	app.Compo
 
-	startTime       time.Time
-	ticker          *time.Ticker
-	seconds         int
+	newTaskName     string
 	updateAvailable bool
-	duration        time.Duration
+	tasks           []task
+}
+
+func (h *hello) OnMount(ctx app.Context) {
+	ctx.LocalStorage().ForEach(func(key string) {
+		if !strings.HasPrefix(key, "_task") {
+			return
+		}
+
+		var startUnix int64
+		err := ctx.LocalStorage().Get(key, &startUnix)
+		if err != nil {
+			app.Log(err)
+			return
+		}
+
+		h.tasks = append(h.tasks, task{
+			name:   strings.TrimPrefix(key, "_task_"),
+			start:  time.Unix(startUnix, 0),
+			ticker: time.NewTicker(1 * time.Second),
+		})
+	})
 }
 
 // OnAppUpdate satisfies the app.AppUpdater interface. It is called when the app
@@ -55,8 +64,15 @@ func (a *hello) OnAppUpdate(ctx app.Context) {
 func (h *hello) Render() app.UI {
 	return app.Main().Body(
 		app.H1().Text("Task Timer"),
-		app.P().Text(fmt.Sprintf("Task 1: %s", h.duration)),
 
+		app.Div().Body(
+			app.Range(h.tasks).Slice(func(i int) app.UI {
+				return &h.tasks[i]
+			}),
+		),
+
+		app.Input().Type("text").Placeholder("Task name").Value(h.newTaskName).OnChange(h.onChange),
+		app.Button().Text("Start new task").OnClick(h.addNewTask),
 		// Displays an Update button when an update is available.
 		app.If(h.updateAvailable, func() app.UI {
 			return app.Button().
@@ -66,18 +82,27 @@ func (h *hello) Render() app.UI {
 	)
 }
 
-func (h *hello) OnMount(ctx app.Context) {
-	h.ticker = time.NewTicker(1 * time.Second)
-	ctx.Async(func() {
-		for t := range h.ticker.C {
-			ctx.Dispatch(func(c app.Context) {
-				h.duration = elapsedFrom(h.startTime, t)
-			})
-		}
-	})
-}
-
 func (h *hello) onUpdateClick(ctx app.Context, e app.Event) {
 	// Reloads the page to display the modifications.
 	ctx.Reload()
+}
+
+func (h *hello) addNewTask(ctx app.Context, e app.Event) {
+	newTask := task{
+		name:   h.newTaskName,
+		start:  time.Now(),
+		ticker: time.NewTicker(1 * time.Second),
+	}
+	h.tasks = append(h.tasks, newTask)
+
+	err := ctx.LocalStorage().Set("_task_"+newTask.name, newTask.start.Unix())
+	if err != nil {
+		app.Log(err)
+	}
+
+	h.newTaskName = ""
+}
+
+func (h *hello) onChange(ctx app.Context, e app.Event) {
+	h.newTaskName = ctx.JSSrc().Get("value").String()
 }
