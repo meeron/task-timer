@@ -7,28 +7,43 @@ import (
 	"github.com/maxence-charriere/go-app/v11/pkg/app"
 )
 
-func (t *task) Render() app.UI {
-	return app.Div().Body(
-		app.P().Text(fmt.Sprintf("%s: %s", t.name, fmt.Sprintf("%s", t.duration))),
+func (t *taskComponent) Render() app.UI {
+	return app.Div().DataSet("id", t.id).Styles(map[string]string{"display": "flex", "gap": "1rem"}).Body(
+		app.Div().Styles(map[string]string{"display": "flex", "gap": "1rem"}).Body(
+			app.Span().Text(t.data.Name),
+			app.Span().Text(fmt.Sprintf("%s", t.duration)),
+		),
+		app.Button().Text("Delete").OnClick(t.onDelete),
 	)
 }
 
-func (t *task) OnMount(ctx app.Context) {
+func (t *taskComponent) OnMount(ctx app.Context) {
 	t.ticker = time.NewTicker(1 * time.Second)
+	t.duration = time.Second * time.Duration(time.Now().Unix()-t.data.StartUnix)
+
 	ctx.Async(func() {
 		for current := range t.ticker.C {
 			ctx.Dispatch(func(c app.Context) {
-				t.duration = current.Sub(t.start)
+				t.duration = time.Second * time.Duration(current.Unix()-t.data.StartUnix)
 			})
 		}
 	})
 }
 
-type task struct {
+func (t *taskComponent) onDelete(ctx app.Context, e app.Event) {
+	ctx.NewActionWithValue("deleteTask", t.id)
+}
+
+type taskComponent struct {
 	app.Compo
 
-	name     string
-	start    time.Time
+	id       string
+	data     taskData
 	ticker   *time.Ticker
 	duration time.Duration
+}
+
+type taskData struct {
+	Name      string
+	StartUnix int64
 }
