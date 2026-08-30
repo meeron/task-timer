@@ -53,8 +53,8 @@ func (h *hello) Render() app.UI {
 		app.Div().Body(
 			app.Range(h.tasks).Map(func(key string) app.UI {
 				return &taskComponent{
-					id:   key,
-					data: h.tasks[key],
+					Id:   key,
+					Data: h.tasks[key],
 				}
 			}),
 		),
@@ -83,15 +83,8 @@ func (h *hello) onUpdateClick(ctx app.Context, e app.Event) {
 
 func (h *hello) onTaskDelete(ctx app.Context, a app.Action) {
 	taskId := a.Value.(string)
-	app.Log(fmt.Sprintf("Delete task %s", taskId))
-
-	// There's some bug when rendering map after delete.
-	// For now let's just reload map again
-	//delete(h.tasks, taskId)
-
 	ctx.LocalStorage().Del(taskId)
-	h.loadTasks(ctx.LocalStorage())
-	ctx.Update()
+	delete(h.tasks, taskId)
 }
 
 func (h *hello) addNewTask(ctx app.Context, e app.Event) {
