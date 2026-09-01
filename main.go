@@ -93,6 +93,7 @@ func (h *hello) addNewTask(ctx app.Context, e app.Event) {
 	h.tasks[taskId] = taskData{
 		Name:      h.newTaskName,
 		StartUnix: time.Now().Unix(),
+		IsRunning: true,
 	}
 
 	err := ctx.LocalStorage().Set(taskId, h.tasks[taskId])
