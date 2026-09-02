@@ -24,7 +24,7 @@ func (t *taskComponent) Render() app.UI {
 }
 
 func (t *taskComponent) OnMount(ctx app.Context) {
-	t.isRunning = t.Data.IsRunning
+	t.isRunning = t.Data.Duration == 0
 	t.startUnix = t.Data.StartUnix
 	t.ticker = time.NewTicker(1 * time.Second)
 	t.ticker.Stop()
@@ -52,21 +52,18 @@ func (t *taskComponent) onDelete(ctx app.Context, e app.Event) {
 
 func (t *taskComponent) onStop(ctx app.Context, e app.Event) {
 	t.ticker.Stop()
-
-	t.Data.Duration = int64(t.duration)
-	t.Data.IsRunning = false
 	t.isRunning = false
 
+	// t.Data is not updated
+	t.Data.Duration = int64(t.duration)
 	ctx.LocalStorage().Set(t.Id, t.Data)
 }
 
 func (t *taskComponent) onResume(ctx app.Context, e app.Event) {
 	t.isRunning = true
-	t.duration = time.Duration(t.Data.Duration)
-	t.startUnix = time.Now().Add(-t.duration).Unix()
+	t.startUnix = time.Now().Unix() - int64(t.duration.Seconds())
 
 	t.Data.StartUnix = t.startUnix
-	t.Data.IsRunning = t.isRunning
 	t.Data.Duration = 0
 	ctx.LocalStorage().Set(t.Id, t.Data)
 
@@ -88,5 +85,4 @@ type taskData struct {
 	Name      string
 	StartUnix int64
 	Duration  int64
-	IsRunning bool
 }
