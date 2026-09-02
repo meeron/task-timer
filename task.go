@@ -11,7 +11,7 @@ func (t *taskComponent) Render() app.UI {
 	return app.Div().DataSet("id", t.Id).Styles(map[string]string{"display": "flex", "gap": "1rem"}).Body(
 		app.Div().Styles(map[string]string{"display": "flex", "gap": "1rem"}).Body(
 			app.Span().Text(t.Data.Name),
-			app.Span().Text(fmt.Sprintf("%s", t.duration)),
+			app.Span().Text(t.formatDuration()),
 		),
 		app.If(t.isRunning, func() app.UI {
 			return app.Button().Text("Stop").OnClick(t.onStop)
@@ -68,6 +68,30 @@ func (t *taskComponent) onResume(ctx app.Context, e app.Event) {
 	ctx.LocalStorage().Set(t.Id, t.Data)
 
 	t.ticker.Reset(1 * time.Second)
+}
+
+func (t *taskComponent) formatDuration() []string {
+	// 0:hours, 1:minutes, 2:seconds
+	parts := make([]string, 3)
+
+	hours := int(t.duration.Hours())
+	if hours > 0 {
+		parts[0] = fmt.Sprintf("%dh ", hours)
+	}
+
+	minutes := int(t.duration.Minutes())
+	if minutes > 0 {
+		parts[1] = fmt.Sprintf("%dm ", minutes)
+	}
+
+	seconds := int(t.duration.Seconds())
+	if t.duration.Seconds() > 59 {
+		parts[2] = fmt.Sprintf("%ds ", seconds-(minutes*60))
+	} else {
+		parts[2] = fmt.Sprintf("%ds ", seconds)
+	}
+
+	return parts
 }
 
 type taskComponent struct {

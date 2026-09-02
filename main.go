@@ -88,6 +88,10 @@ func (h *hello) onTaskDelete(ctx app.Context, a app.Action) {
 }
 
 func (h *hello) addNewTask(ctx app.Context, e app.Event) {
+	if h.newTaskName == "" {
+		return
+	}
+
 	taskId := "_task_" + fmt.Sprintf("%s", uuid.NewV4())
 
 	h.tasks[taskId] = taskData{
