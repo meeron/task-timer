@@ -11,7 +11,7 @@ func (t *taskComponent) Render() app.UI {
 	return app.Div().DataSet("id", t.Id).Styles(map[string]string{"display": "flex", "gap": "1rem"}).Body(
 		app.Div().Styles(map[string]string{"display": "flex", "gap": "1rem"}).Body(
 			app.Span().Text(t.Data.Name),
-			app.Span().Text(t.formatDuration()),
+			app.Span().Text(formatDuration(t.duration)),
 		),
 		app.If(t.isRunning, func() app.UI {
 			return app.Button().Text("Stop").OnClick(t.onStop)
@@ -19,6 +19,7 @@ func (t *taskComponent) Render() app.UI {
 		app.If(!t.isRunning, func() app.UI {
 			return app.Button().Text("Resume").OnClick(t.onResume)
 		}),
+		app.Button().Text("Add minutes").OnClick(t.onAddMinutes),
 		app.Button().Text("Delete").OnClick(t.onDelete),
 	)
 }
@@ -70,25 +71,51 @@ func (t *taskComponent) onResume(ctx app.Context, e app.Event) {
 	t.ticker.Reset(1 * time.Second)
 }
 
-func (t *taskComponent) formatDuration() []string {
+func (t *taskComponent) onAddMinutes(ctx app.Context, e app.Event) {
+	minutesVal := app.Window().Call("prompt", "Minutes:")
+	if minutesVal.IsNull() {
+		return
+	}
+
+	duration, err := time.ParseDuration(fmt.Sprintf("%sm", minutesVal.String()))
+	if err != nil {
+		app.Logf("%v", err)
+		return
+	}
+
+	if t.isRunning {
+		t.startUnix -= int64(duration.Seconds())
+		t.Data.StartUnix = t.startUnix
+		ctx.LocalStorage().Set(t.Id, t.Data)
+		return
+	}
+
+	t.duration += duration
+	t.Data.Duration = int64(t.duration)
+	ctx.LocalStorage().Set(t.Id, t.Data)
+}
+
+func formatDuration(duration time.Duration) []string {
 	// 0:hours, 1:minutes, 2:seconds
 	parts := make([]string, 3)
 
-	hours := int(t.duration.Hours())
+	hours := int(duration.Hours())
 	if hours > 0 {
-		parts[0] = fmt.Sprintf("%dh ", hours)
+		parts[0] = fmt.Sprintf("%dh", hours)
 	}
 
-	minutes := int(t.duration.Minutes())
-	if minutes > 0 {
-		parts[1] = fmt.Sprintf("%dm ", minutes)
-	}
-
-	seconds := int(t.duration.Seconds())
-	if t.duration.Seconds() > 59 {
-		parts[2] = fmt.Sprintf("%ds ", seconds-(minutes*60))
+	minutes := int(duration.Minutes())
+	if minutes > 59 {
+		parts[1] = fmt.Sprintf("%dm", minutes-(hours*60))
 	} else {
-		parts[2] = fmt.Sprintf("%ds ", seconds)
+		parts[1] = fmt.Sprintf("%dm", minutes)
+	}
+
+	seconds := int(duration.Seconds())
+	if seconds > 59 {
+		parts[2] = fmt.Sprintf("%ds", seconds-(minutes*60))
+	} else {
+		parts[2] = fmt.Sprintf("%ds", seconds)
 	}
 
 	return parts
