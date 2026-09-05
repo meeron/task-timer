@@ -17,6 +17,7 @@ func main() {
 	http.Handle("/", &app.Handler{
 		Name:        "Task Timer",
 		Description: "Measure your tasks time",
+		Styles:      []string{"web/styles.css"},
 	})
 
 	fmt.Println("Listening on port 8080...")
