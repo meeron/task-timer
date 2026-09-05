@@ -1,13 +1,14 @@
-package main
+package components
 
 import (
 	"fmt"
 	"time"
 
 	"github.com/maxence-charriere/go-app/v11/pkg/app"
+	"github.com/meeron/task-timer/models"
 )
 
-func (t *taskComponent) Render() app.UI {
+func (t *Task) Render() app.UI {
 	return app.Div().DataSet("id", t.Id).Styles(map[string]string{"display": "flex", "gap": "1rem"}).Body(
 		app.Div().Styles(map[string]string{"display": "flex", "gap": "1rem"}).Body(
 			app.Span().Text(t.Data.Name),
@@ -24,7 +25,7 @@ func (t *taskComponent) Render() app.UI {
 	)
 }
 
-func (t *taskComponent) OnMount(ctx app.Context) {
+func (t *Task) OnMount(ctx app.Context) {
 	t.isRunning = t.Data.Duration == 0
 	t.startUnix = t.Data.StartUnix
 	t.ticker = time.NewTicker(1 * time.Second)
@@ -47,11 +48,11 @@ func (t *taskComponent) OnMount(ctx app.Context) {
 	t.ticker.Reset(1 * time.Second)
 }
 
-func (t *taskComponent) onDelete(ctx app.Context, e app.Event) {
+func (t *Task) onDelete(ctx app.Context, e app.Event) {
 	ctx.NewActionWithValue("deleteTask", t.Id)
 }
 
-func (t *taskComponent) onStop(ctx app.Context, e app.Event) {
+func (t *Task) onStop(ctx app.Context, e app.Event) {
 	t.ticker.Stop()
 	t.isRunning = false
 
@@ -60,7 +61,7 @@ func (t *taskComponent) onStop(ctx app.Context, e app.Event) {
 	ctx.LocalStorage().Set(t.Id, t.Data)
 }
 
-func (t *taskComponent) onResume(ctx app.Context, e app.Event) {
+func (t *Task) onResume(ctx app.Context, e app.Event) {
 	t.isRunning = true
 	t.startUnix = time.Now().Unix() - int64(t.duration.Seconds())
 
@@ -71,7 +72,7 @@ func (t *taskComponent) onResume(ctx app.Context, e app.Event) {
 	t.ticker.Reset(1 * time.Second)
 }
 
-func (t *taskComponent) onAddMinutes(ctx app.Context, e app.Event) {
+func (t *Task) onAddMinutes(ctx app.Context, e app.Event) {
 	minutesVal := app.Window().Call("prompt", "Minutes:")
 	if minutesVal.IsNull() {
 		return
@@ -121,19 +122,13 @@ func formatDuration(duration time.Duration) []string {
 	return parts
 }
 
-type taskComponent struct {
+type Task struct {
 	app.Compo
 
 	Id        string
-	Data      taskData
+	Data      models.Task
 	ticker    *time.Ticker
 	duration  time.Duration
 	isRunning bool
 	startUnix int64
-}
-
-type taskData struct {
-	Name      string
-	StartUnix int64
-	Duration  int64
 }
