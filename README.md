@@ -6,9 +6,11 @@ A modern, lightweight Progressive Web Application (PWA) for tracking task time e
 
 ## Features
 
-- ⏱️ **Real-Time Tracking**: Live timers with active status indicators (running vs. paused) and formatted duration displays (`HHh MMm SSs` / `MMm SSs`).
+- ⏱️ **Real-Time Tracking**: Live timers with active status indicators (running vs. stopped) and formatted duration displays (`HHh MMm SSs` / `MMm SSs`).
 - ⏯️ **Pause & Resume**: Stop and resume tasks anytime without losing accumulated time.
-- ✏️ **Edit Timer**: Adjust or set timer duration directly from a template format (e.g. `1h 15m`).
+- ✏️ **Edit Timer**: Adjust or set a timer duration directly from the task card. Accepts multiple input formats (see [Edit Timer formats](#edit-timer-formats)).
+- 🔂 **Single Active Timer**: Starting or resuming a task automatically stops any other running task, keeping you focused on one thing at a time.
+- 🗑️ **Delete with Confirmation**: Remove tasks through a confirmation dialog to prevent accidental deletions.
 - 💾 **Local Persistence**: Tasks are persisted across sessions directly in browser `localStorage`.
 - 📱 **Progressive Web App (PWA)**: Installable, responsive, with built-in app update notifications.
 - 🎨 **Clean UI**: Crafted with modern Tailwind CSS v4 styling, badges, and responsive layouts.
@@ -17,10 +19,13 @@ A modern, lightweight Progressive Web Application (PWA) for tracking task time e
 
 ## Tech Stack
 
-- **Language**: [Go](https://go.dev/) (compiled to WebAssembly for the client, native binary for the static server)
-- **Web Framework**: [go-app (v11)](https://github.com/maxence-charriere/go-app) — Progressive web app framework for Go & WebAssembly
-- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
-- **Package Manager**: [pnpm](https://pnpm.io/)
+| Layer | Technology |
+|---|---|
+| Language | [Go 1.27](https://go.dev/) — compiled to WebAssembly (client) and native binary (server) |
+| Web Framework | [go-app v11](https://github.com/maxence-charriere/go-app) — PWA framework for Go & WebAssembly |
+| Styling | [Tailwind CSS v4](https://tailwindcss.com/) |
+| Package Manager | [pnpm](https://pnpm.io/) |
+| UUID | [google/uuid](https://github.com/google/uuid) — task ID generation |
 
 ---
 
@@ -28,9 +33,10 @@ A modern, lightweight Progressive Web Application (PWA) for tracking task time e
 
 Ensure the following tools are installed:
 
-- **Go** (1.22+ recommended)
+- **Go** (1.27+)
 - **Node.js** & **pnpm** (e.g. pnpm 9+)
 - **Make** (optional, for running Makefile targets)
+- **Docker** (optional, for containerized deployment)
 
 ---
 
@@ -102,26 +108,78 @@ http://localhost:8080
 
 ---
 
+## Docker
+
+A multi-stage `Dockerfile` is included for containerized builds and deployment.
+
+### Build the image
+
+```bash
+docker build -t task-timer .
+```
+
+### Run the container
+
+```bash
+docker run -p 8080:8080 task-timer
+```
+
+The app will be available at `http://localhost:8080`.
+
+> The image uses a minimal Alpine runtime with a statically linked binary — no Go or Node.js required at runtime.
+
+---
+
+## Edit Timer Formats
+
+When editing a task's elapsed time, the input field accepts several flexible formats:
+
+| Format | Example | Description |
+|---|---|---|
+| Template | `1h 15m` | Hours and/or minutes with `h`/`m` suffixes |
+| Colon (HH:MM) | `1:30` | Hours and minutes separated by `:` |
+| Colon (HH:MM:SS) | `1:30:00` | Hours, minutes, and seconds |
+| Natural language | `1 hour 30 mins` | Long-form words like `hour`, `minute`, `seconds` |
+| Plain number | `45` | Treated as minutes |
+
+Quick-select presets (`15m`, `30m`, `45m`, `1h`, `1h 15m`, `2h`) are also available in the edit dialog.
+
+---
+
+## Running Tests
+
+```bash
+make test
+# or
+go test ./...
+```
+
+---
+
 ## Project Structure
 
 ```text
 task-timer/
-├── bin/                  # Compiled server binaries
-├── components/           # Reusable go-app UI components
-│   └── task_component.go # Task card with timer controls and real-time ticker
-├── models/               # Data structures
-│   └── models.go         # Task model definition
-├── pages/                # Application pages and views
-│   └── home_page.go      # Dashboard, task input form, and list management
-├── styles/               # Source stylesheets
-│   └── main.css          # Tailwind CSS entrypoint
-├── web/                  # Static web assets served by go-app
-│   ├── app.wasm          # Compiled WebAssembly binary
-│   └── styles.css        # Compiled Tailwind stylesheet
-├── go.mod                # Go module definition
-├── Makefile              # Build and execution automation
-├── package.json          # Node/pnpm dependencies & scripts
-└── main.go               # Server entrypoint and go-app route configuration
+├── bin/                           # Compiled server binaries
+├── components/                    # Reusable go-app UI components
+│   ├── task_component.go          # Task card with timer controls and real-time ticker
+│   ├── task_component_test.go     # Unit tests for task component helpers
+│   ├── edit_dialog_component.go   # Modal dialog for editing timer duration
+│   └── delete_dialog_component.go # Modal dialog for confirming task deletion
+├── models/                        # Data structures
+│   └── models.go                  # Task model definition
+├── pages/                         # Application pages and views
+│   └── home_page.go               # Dashboard, task input form, and list management
+├── styles/                        # Source stylesheets
+│   └── main.css                   # Tailwind CSS entrypoint
+├── web/                           # Static web assets served by go-app
+│   ├── app.wasm                   # Compiled WebAssembly binary
+│   └── styles.css                 # Compiled Tailwind stylesheet
+├── Dockerfile                     # Multi-stage Docker build
+├── go.mod                         # Go module definition
+├── Makefile                       # Build, run, and test automation
+├── package.json                   # Node/pnpm dependencies & scripts
+└── main.go                        # Server entrypoint and go-app route configuration
 ```
 
 ---
