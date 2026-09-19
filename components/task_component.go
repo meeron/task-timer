@@ -18,7 +18,7 @@ func (t *Task) Render() app.UI {
 
 	return app.Div().
 		DataSet("id", t.Id).
-		Class("bg-white rounded-xl border border-slate-200/80 border-l-4 shadow-xs hover:shadow-md transition-all p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 " + statusBorder).
+		Class("bg-white rounded-xl border border-slate-200/80 border-l-4 shadow-xs hover:shadow-md transition-all p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 "+statusBorder).
 		Body(
 			// Left side: Status badge & Task name
 			app.Div().Class("flex flex-col gap-1.5 min-w-0").Body(
@@ -44,14 +44,14 @@ func (t *Task) Render() app.UI {
 
 			// Right side: Timer display & Action buttons
 			app.Div().Class("flex flex-wrap items-center sm:justify-end gap-3 sm:gap-4").Body(
-				app.Span().Class("font-mono text-xl font-bold tracking-tight px-3 py-1 bg-slate-50 rounded-lg border border-slate-200 " + timerColor).
+				app.Span().Class("font-mono text-xl font-bold tracking-tight px-3 py-1 bg-slate-50 rounded-lg border border-slate-200 "+timerColor).
 					Text(formatDuration(t.duration)),
 
 				app.Div().Class("flex items-center gap-1.5").Body(
 					app.If(t.isRunning, func() app.UI {
 						return app.Button().
 							Class("inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600 active:scale-95 transition-all shadow-xs cursor-pointer").
-							Text("Pause").
+							Text("Stop").
 							OnClick(t.onStop)
 					}),
 					app.If(!t.isRunning, func() app.UI {
@@ -97,6 +97,11 @@ func (t *Task) OnMount(ctx app.Context) {
 }
 
 func (t *Task) onDelete(ctx app.Context, e app.Event) {
+	confirmValue := app.Window().Call("confirm", "Are you sure you want to delete task?")
+	if !confirmValue.Bool() {
+		return
+	}
+
 	ctx.NewActionWithValue("deleteTask", t.Id)
 }
 

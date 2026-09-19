@@ -23,20 +23,6 @@ func (h *Home) OnAppUpdate(ctx app.Context) {
 	h.updateAvailable = ctx.AppUpdateAvailable() // Reports that an app update is available.
 }
 
-func (h *Home) sortedTaskIDs() []string {
-	keys := make([]string, 0, len(h.tasks))
-	for k := range h.tasks {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		if h.tasks[keys[i]].StartUnix != h.tasks[keys[j]].StartUnix {
-			return h.tasks[keys[i]].StartUnix < h.tasks[keys[j]].StartUnix
-		}
-		return keys[i] < keys[j]
-	})
-	return keys
-}
-
 func (h *Home) Render() app.UI {
 	taskIDs := h.sortedTaskIDs()
 
@@ -163,6 +149,20 @@ func (h *Home) loadTasks(storage app.BrowserStorage) {
 
 		h.tasks[key] = data
 	})
+}
+
+func (h *Home) sortedTaskIDs() []string {
+	keys := make([]string, 0, len(h.tasks))
+	for k := range h.tasks {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if h.tasks[keys[i]].StartUnix != h.tasks[keys[j]].StartUnix {
+			return h.tasks[keys[i]].StartUnix < h.tasks[keys[j]].StartUnix
+		}
+		return keys[i] < keys[j]
+	})
+	return keys
 }
 
 type Home struct {
