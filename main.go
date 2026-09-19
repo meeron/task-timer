@@ -15,9 +15,12 @@ func main() {
 
 	// Standard HTTP routing (server-side):
 	http.Handle("/", &app.Handler{
-		Name:        "Task Timer",
-		Description: "Measure your tasks time",
-		Styles:      []string{"web/styles.css"},
+		Name:            "Task Timer",
+		Title:           "Task Timer",
+		Description:     "Measure your tasks time",
+		Styles:          []string{"web/styles.css"},
+		BackgroundColor: "#f8fafc",
+		ThemeColor:      "#4f46e5",
 	})
 
 	fmt.Println("Listening on port 8080...")

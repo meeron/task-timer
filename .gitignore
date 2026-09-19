@@ -2,3 +2,4 @@
 app.wasm
 node_modules
 styles.build-*.css
+web/*.css

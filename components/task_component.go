@@ -9,20 +9,68 @@ import (
 )
 
 func (t *Task) Render() app.UI {
-	return app.Div().DataSet("id", t.Id).Styles(map[string]string{"display": "flex", "gap": "1rem"}).Body(
-		app.Div().Styles(map[string]string{"display": "flex", "gap": "1rem"}).Body(
-			app.Span().Text(t.Data.Name),
-			app.Span().Text(formatDuration(t.duration)),
-		),
-		app.If(t.isRunning, func() app.UI {
-			return app.Button().Text("Stop").OnClick(t.onStop)
-		}),
-		app.If(!t.isRunning, func() app.UI {
-			return app.Button().Text("Resume").OnClick(t.onResume)
-		}),
-		app.Button().Text("Add minutes").OnClick(t.onAddMinutes),
-		app.Button().Text("Delete").OnClick(t.onDelete),
-	)
+	statusBorder := "border-l-emerald-500"
+	timerColor := "text-emerald-600"
+	if !t.isRunning {
+		statusBorder = "border-l-slate-300"
+		timerColor = "text-slate-600"
+	}
+
+	return app.Div().
+		DataSet("id", t.Id).
+		Class("bg-white rounded-xl border border-slate-200/80 border-l-4 shadow-xs hover:shadow-md transition-all p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 " + statusBorder).
+		Body(
+			// Left side: Status badge & Task name
+			app.Div().Class("flex flex-col gap-1.5 min-w-0").Body(
+				app.Div().Class("flex items-center gap-2").Body(
+					app.If(t.isRunning, func() app.UI {
+						return app.Span().Class("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200").Body(
+							app.Span().Class("relative flex h-2 w-2").Body(
+								app.Span().Class("animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"),
+								app.Span().Class("relative inline-flex rounded-full h-2 w-2 bg-emerald-500"),
+							),
+							app.Text("RUNNING"),
+						)
+					}),
+					app.If(!t.isRunning, func() app.UI {
+						return app.Span().Class("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200").Body(
+							app.Span().Class("inline-block h-2 w-2 rounded-full bg-slate-400"),
+							app.Text("PAUSED"),
+						)
+					}),
+				),
+				app.H3().Class("text-base font-semibold text-slate-900 truncate").Text(t.Data.Name),
+			),
+
+			// Right side: Timer display & Action buttons
+			app.Div().Class("flex flex-wrap items-center sm:justify-end gap-3 sm:gap-4").Body(
+				app.Span().Class("font-mono text-xl font-bold tracking-tight px-3 py-1 bg-slate-50 rounded-lg border border-slate-200 " + timerColor).
+					Text(formatDuration(t.duration)),
+
+				app.Div().Class("flex items-center gap-1.5").Body(
+					app.If(t.isRunning, func() app.UI {
+						return app.Button().
+							Class("inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600 active:scale-95 transition-all shadow-xs cursor-pointer").
+							Text("Pause").
+							OnClick(t.onStop)
+					}),
+					app.If(!t.isRunning, func() app.UI {
+						return app.Button().
+							Class("inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95 transition-all shadow-xs cursor-pointer").
+							Text("Resume").
+							OnClick(t.onResume)
+					}),
+					app.Button().
+						Class("inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-95 transition-all cursor-pointer").
+						Text("+ Minutes").
+						OnClick(t.onAddMinutes),
+					app.Button().
+						Class("inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700 active:scale-95 transition-all cursor-pointer").
+						Text("Delete").
+						OnClick(t.onDelete),
+				),
+			),
+		)
 }
 
 func (t *Task) OnMount(ctx app.Context) {
@@ -96,30 +144,19 @@ func (t *Task) onAddMinutes(ctx app.Context, e app.Event) {
 	ctx.LocalStorage().Set(t.Id, t.Data)
 }
 
-func formatDuration(duration time.Duration) []string {
-	// 0:hours, 1:minutes, 2:seconds
-	parts := make([]string, 3)
+func formatDuration(duration time.Duration) string {
+	totalSeconds := int64(duration.Seconds())
+	if totalSeconds < 0 {
+		totalSeconds = 0
+	}
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+	seconds := totalSeconds % 60
 
-	hours := int(duration.Hours())
 	if hours > 0 {
-		parts[0] = fmt.Sprintf("%dh", hours)
+		return fmt.Sprintf("%02dh %02dm %02ds", hours, minutes, seconds)
 	}
-
-	minutes := int(duration.Minutes())
-	if minutes > 59 {
-		parts[1] = fmt.Sprintf("%dm", minutes-(hours*60))
-	} else {
-		parts[1] = fmt.Sprintf("%dm", minutes)
-	}
-
-	seconds := int(duration.Seconds())
-	if seconds > 59 {
-		parts[2] = fmt.Sprintf("%ds", seconds-(minutes*60))
-	} else {
-		parts[2] = fmt.Sprintf("%ds", seconds)
-	}
-
-	return parts
+	return fmt.Sprintf("%02dm %02ds", minutes, seconds)
 }
 
 type Task struct {
