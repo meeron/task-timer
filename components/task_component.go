@@ -80,6 +80,15 @@ func (t *Task) Render() app.UI {
 					OnCancel:     t.onCancelEdit,
 				}
 			}),
+
+			// Tailwind dialog for confirming delete
+			app.If(t.isDeleting, func() app.UI {
+				return &DeleteDialog{
+					TaskName:  t.Data.Name,
+					OnConfirm: t.onConfirmDelete,
+					OnCancel:  t.onCancelDelete,
+				}
+			}),
 		)
 }
 
@@ -107,11 +116,15 @@ func (t *Task) OnMount(ctx app.Context) {
 }
 
 func (t *Task) onDelete(ctx app.Context, e app.Event) {
-	confirmValue := app.Window().Call("confirm", "Are you sure you want to delete task?")
-	if !confirmValue.Bool() {
-		return
-	}
+	t.isDeleting = true
+}
 
+func (t *Task) onCancelDelete(ctx app.Context) {
+	t.isDeleting = false
+}
+
+func (t *Task) onConfirmDelete(ctx app.Context) {
+	t.isDeleting = false
 	ctx.NewActionWithValue("deleteTask", t.Id)
 }
 
@@ -183,11 +196,12 @@ func formatDuration(duration time.Duration) string {
 type Task struct {
 	app.Compo
 
-	Id        string
-	Data      models.Task
-	ticker    *time.Ticker
-	duration  time.Duration
-	isRunning bool
-	startUnix int64
-	isEditing bool
+	Id         string
+	Data       models.Task
+	ticker     *time.Ticker
+	duration   time.Duration
+	isRunning  bool
+	startUnix  int64
+	isEditing  bool
+	isDeleting bool
 }
