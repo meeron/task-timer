@@ -3,8 +3,8 @@ build:
 	go build -o bin/task-timer
 	pnpm exec tailwindcss -i styles/main.css -o web/styles.css
 
-run: build
-	./bin/task-timer
+run:
+	go tool air
 
 test:
 	go test ./...

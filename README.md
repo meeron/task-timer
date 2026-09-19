@@ -19,13 +19,13 @@ A modern, lightweight Progressive Web Application (PWA) for tracking task time e
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Language | [Go 1.27](https://go.dev/) — compiled to WebAssembly (client) and native binary (server) |
-| Web Framework | [go-app v11](https://github.com/maxence-charriere/go-app) — PWA framework for Go & WebAssembly |
-| Styling | [Tailwind CSS v4](https://tailwindcss.com/) |
-| Package Manager | [pnpm](https://pnpm.io/) |
-| UUID | [google/uuid](https://github.com/google/uuid) — task ID generation |
+| Layer           | Technology                                                                                     |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| Language        | [Go 1.27](https://go.dev/) — compiled to WebAssembly (client) and native binary (server)       |
+| Web Framework   | [go-app v11](https://github.com/maxence-charriere/go-app) — PWA framework for Go & WebAssembly |
+| Styling         | [Tailwind CSS v4](https://tailwindcss.com/)                                                    |
+| Package Manager | [pnpm](https://pnpm.io/)                                                                       |
+| UUID            | [google/uuid](https://github.com/google/uuid) — task ID generation                             |
 
 ---
 
@@ -65,26 +65,6 @@ You can build the WebAssembly binary, Tailwind stylesheet, and backend server us
 make build
 ```
 
-Or execute the steps manually:
-
-```bash
-# 1. Compile the Go app to WebAssembly
-GOARCH=wasm GOOS=js go build -o web/app.wasm
-
-# 2. Compile Tailwind CSS
-pnpm exec tailwindcss -i styles/main.css -o web/styles.css
-
-# 3. Build the server binary
-go build -o bin/task-timer
-```
-
-> **Note for Windows PowerShell users:**
-> ```powershell
-> $env:GOARCH="wasm"; $env:GOOS="js"; go build -o web/app.wasm; Remove-Item Env:\GOARCH, Env:\GOOS
-> pnpm exec tailwindcss -i styles/main.css -o web/styles.css
-> go build -o bin/task-timer.exe
-> ```
-
 ### 4. Run the Application
 
 Start the server using `make`:
@@ -93,15 +73,8 @@ Start the server using `make`:
 make run
 ```
 
-Or execute the binary directly:
-
-```bash
-./bin/task-timer
-# On Windows:
-# .\bin\task-timer.exe
-```
-
 Open your browser at:
+
 ```
 http://localhost:8080
 ```
@@ -134,13 +107,13 @@ The app will be available at `http://localhost:8080`.
 
 When editing a task's elapsed time, the input field accepts several flexible formats:
 
-| Format | Example | Description |
-|---|---|---|
-| Template | `1h 15m` | Hours and/or minutes with `h`/`m` suffixes |
-| Colon (HH:MM) | `1:30` | Hours and minutes separated by `:` |
-| Colon (HH:MM:SS) | `1:30:00` | Hours, minutes, and seconds |
+| Format           | Example          | Description                                      |
+| ---------------- | ---------------- | ------------------------------------------------ |
+| Template         | `1h 15m`         | Hours and/or minutes with `h`/`m` suffixes       |
+| Colon (HH:MM)    | `1:30`           | Hours and minutes separated by `:`               |
+| Colon (HH:MM:SS) | `1:30:00`        | Hours, minutes, and seconds                      |
 | Natural language | `1 hour 30 mins` | Long-form words like `hour`, `minute`, `seconds` |
-| Plain number | `45` | Treated as minutes |
+| Plain number     | `45`             | Treated as minutes                               |
 
 Quick-select presets (`15m`, `30m`, `45m`, `1h`, `1h 15m`, `2h`) are also available in the edit dialog.
 
