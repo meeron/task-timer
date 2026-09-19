@@ -106,6 +106,17 @@ func (t *Task) OnMount(ctx app.Context) {
 		}
 	})
 
+	// Stop this task when another task is started or resumed.
+	ctx.Handle("stopOtherTasks", func(c app.Context, a app.Action) {
+		activeID := a.Value.(string)
+		if activeID != t.Id && t.isRunning {
+			t.ticker.Stop()
+			t.isRunning = false
+			t.Data.Duration = int64(t.duration)
+			c.LocalStorage().Set(t.Id, t.Data)
+		}
+	})
+
 	if !t.isRunning {
 		t.duration = time.Duration(t.Data.Duration)
 		return
@@ -138,6 +149,8 @@ func (t *Task) onStop(ctx app.Context, e app.Event) {
 }
 
 func (t *Task) onResume(ctx app.Context, e app.Event) {
+	ctx.NewActionWithValue("stopOtherTasks", t.Id)
+
 	t.isRunning = true
 	t.startUnix = time.Now().Unix() - int64(t.duration.Seconds())
 

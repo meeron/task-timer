@@ -120,6 +120,9 @@ func (h *Home) addNewTask(ctx app.Context, e app.Event) {
 
 	taskId := "_task_" + uuid.NewV7().String()
 
+	// Stop any currently running task before starting the new one.
+	ctx.NewActionWithValue("stopOtherTasks", taskId)
+
 	h.tasks[taskId] = models.Task{
 		Name:      h.newTaskName,
 		StartUnix: time.Now().Unix(),
