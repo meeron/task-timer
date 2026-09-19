@@ -2,6 +2,8 @@ package components
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/maxence-charriere/go-app/v11/pkg/app"
@@ -35,7 +37,7 @@ func (t *Task) Render() app.UI {
 					app.If(!t.isRunning, func() app.UI {
 						return app.Span().Class("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200").Body(
 							app.Span().Class("inline-block h-2 w-2 rounded-full bg-slate-400"),
-							app.Text("PAUSED"),
+							app.Text("STOPPED"),
 						)
 					}),
 				),
@@ -62,8 +64,8 @@ func (t *Task) Render() app.UI {
 					}),
 					app.Button().
 						Class("inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-95 transition-all cursor-pointer").
-						Text("+ Minutes").
-						OnClick(t.onAddMinutes),
+						Text("Edit").
+						OnClick(t.onEdit),
 					app.Button().
 						Class("inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700 active:scale-95 transition-all cursor-pointer").
 						Text("Delete").
@@ -125,28 +127,110 @@ func (t *Task) onResume(ctx app.Context, e app.Event) {
 	t.ticker.Reset(1 * time.Second)
 }
 
-func (t *Task) onAddMinutes(ctx app.Context, e app.Event) {
-	minutesVal := app.Window().Call("prompt", "Minutes:")
-	if minutesVal.IsNull() {
+func (t *Task) currentDuration() time.Duration {
+	if t.isRunning {
+		return time.Second * time.Duration(time.Now().Unix()-t.startUnix)
+	}
+	return t.duration
+}
+
+func (t *Task) onEdit(ctx app.Context, e app.Event) {
+	current := t.currentDuration()
+	template := formatDurationTemplate(current)
+	val := app.Window().Call("prompt", "Edit timer (e.g. 1h 15m):", template)
+	if val.IsNull() || val.IsUndefined() {
 		return
 	}
 
-	duration, err := time.ParseDuration(fmt.Sprintf("%sm", minutesVal.String()))
+	input := strings.TrimSpace(val.String())
+	if input == "" {
+		return
+	}
+
+	newDuration, err := parseDurationInput(input)
 	if err != nil {
 		app.Logf("%v", err)
+		app.Window().Call("alert", "Invalid time format. Example format: 1h 15m")
 		return
 	}
 
+	t.duration = newDuration
 	if t.isRunning {
-		t.startUnix -= int64(duration.Seconds())
+		t.startUnix = time.Now().Unix() - int64(newDuration.Seconds())
 		t.Data.StartUnix = t.startUnix
+		t.Data.Duration = 0
 		ctx.LocalStorage().Set(t.Id, t.Data)
 		return
 	}
 
-	t.duration += duration
 	t.Data.Duration = int64(t.duration)
 	ctx.LocalStorage().Set(t.Id, t.Data)
+}
+
+func formatDurationTemplate(duration time.Duration) string {
+	totalSeconds := int64(duration.Seconds())
+	if totalSeconds < 0 {
+		totalSeconds = 0
+	}
+	hours := totalSeconds / 3600
+	minutes := (totalSeconds % 3600) / 60
+
+	return fmt.Sprintf("%dh %dm", hours, minutes)
+}
+
+func parseDurationInput(input string) (time.Duration, error) {
+	input = strings.TrimSpace(strings.ToLower(input))
+	if input == "" {
+		return 0, fmt.Errorf("empty input")
+	}
+
+	if strings.Contains(input, ":") {
+		parts := strings.Split(input, ":")
+		if len(parts) == 2 {
+			h, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+			m, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+			if err1 == nil && err2 == nil && h >= 0 && m >= 0 {
+				return time.Duration(h)*time.Hour + time.Duration(m)*time.Minute, nil
+			}
+		} else if len(parts) == 3 {
+			h, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+			m, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+			s, err3 := strconv.Atoi(strings.TrimSpace(parts[2]))
+			if err1 == nil && err2 == nil && err3 == nil && h >= 0 && m >= 0 && s >= 0 {
+				return time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(s)*time.Second, nil
+			}
+		}
+	}
+
+	cleaned := strings.ReplaceAll(input, "hours", "h")
+	cleaned = strings.ReplaceAll(cleaned, "hour", "h")
+	cleaned = strings.ReplaceAll(cleaned, "hrs", "h")
+	cleaned = strings.ReplaceAll(cleaned, "hr", "h")
+	cleaned = strings.ReplaceAll(cleaned, "minutes", "m")
+	cleaned = strings.ReplaceAll(cleaned, "minute", "m")
+	cleaned = strings.ReplaceAll(cleaned, "mins", "m")
+	cleaned = strings.ReplaceAll(cleaned, "min", "m")
+	cleaned = strings.ReplaceAll(cleaned, "seconds", "s")
+	cleaned = strings.ReplaceAll(cleaned, "second", "s")
+	cleaned = strings.ReplaceAll(cleaned, "secs", "s")
+	cleaned = strings.ReplaceAll(cleaned, "sec", "s")
+	cleaned = strings.ReplaceAll(cleaned, " ", "")
+
+	if num, err := strconv.Atoi(cleaned); err == nil {
+		if num < 0 {
+			return 0, fmt.Errorf("duration cannot be negative")
+		}
+		return time.Duration(num) * time.Minute, nil
+	}
+
+	d, err := time.ParseDuration(cleaned)
+	if err != nil {
+		return 0, err
+	}
+	if d < 0 {
+		return 0, fmt.Errorf("duration cannot be negative")
+	}
+	return d, nil
 }
 
 func formatDuration(duration time.Duration) string {

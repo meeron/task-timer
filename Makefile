@@ -5,3 +5,6 @@ build:
 
 run: build
 	./bin/task-timer
+
+test:
+	go test ./...

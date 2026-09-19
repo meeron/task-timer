@@ -8,7 +8,7 @@ A modern, lightweight Progressive Web Application (PWA) for tracking task time e
 
 - ⏱️ **Real-Time Tracking**: Live timers with active status indicators (running vs. paused) and formatted duration displays (`HHh MMm SSs` / `MMm SSs`).
 - ⏯️ **Pause & Resume**: Stop and resume tasks anytime without losing accumulated time.
-- ➕ **Add Extra Time**: Quickly adjust or add extra minutes to any task on the fly.
+- ✏️ **Edit Timer**: Adjust or set timer duration directly from a template format (e.g. `1h 15m`).
 - 💾 **Local Persistence**: Tasks are persisted across sessions directly in browser `localStorage`.
 - 📱 **Progressive Web App (PWA)**: Installable, responsive, with built-in app update notifications.
 - 🎨 **Clean UI**: Crafted with modern Tailwind CSS v4 styling, badges, and responsive layouts.
