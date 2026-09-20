@@ -44,9 +44,7 @@ func (h *Home) Render() app.UI {
 			// Header
 			app.Header().Class("flex items-center justify-between pb-1").Body(
 				app.Div().Class("flex items-center gap-3").Body(
-					app.Div().Class("h-11 w-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-xs").Body(
-						app.Span().Text("⏱️"),
-					),
+					app.Img().Src("/web/logo.png").Alt("logo"),
 					app.Div().Body(
 						app.H1().Class("text-2xl font-bold tracking-tight text-slate-900").Text("Task Timer"),
 						app.P().Class("text-xs text-slate-500 font-medium").Text("Focus and measure your time effortlessly"),
