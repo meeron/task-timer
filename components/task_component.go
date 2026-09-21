@@ -92,6 +92,14 @@ func (t *Task) Render() app.UI {
 		)
 }
 
+// CompoID implements app.DismountEnforcer. When the first task is deleted,
+// go-app reuses the component at index 0 with new props. Returning t.Id here
+// causes the framework to fully dismount and remount the component whenever the
+// task identity changes, so OnMount always runs with the correct state.
+func (t *Task) CompoID() string {
+	return t.Id
+}
+
 func (t *Task) OnMount(ctx app.Context) {
 	t.isRunning = t.Data.Duration == 0
 	t.startUnix = t.Data.StartUnix

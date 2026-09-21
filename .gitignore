@@ -4,3 +4,4 @@ node_modules
 styles.build-*.css
 web/*.css
 .DS_Store
+tmp
