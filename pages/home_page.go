@@ -2,7 +2,6 @@ package pages
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 	"uuid"
@@ -15,6 +14,24 @@ import (
 func (h *Home) OnMount(ctx app.Context) {
 	h.loadTasks(ctx.LocalStorage())
 	ctx.Handle("deleteTask", h.onTaskDelete)
+
+	db := app.Window().Get("indexedDB").Call("open", "test", 4)
+	success := app.FuncOf(func(this app.Value, args []app.Value) interface{} {
+		db := args[0].Get("target").Get("result")
+		app.Logf("IndexedDB opened successfully : %v", db.Call("toString"))
+
+		h.db = db
+		return nil
+	})
+	onupgradeneeded := app.FuncOf(func(this app.Value, args []app.Value) interface{} {
+		db := args[0].Get("target").Get("result")
+		store := db.Call("createObjectStore", "tasks", map[string]interface{}{"keyPath": "Id"})
+		app.Logf("Object store created successfully: %v", store)
+		return nil
+	})
+
+	db.Set("onupgradeneeded", onupgradeneeded)
+	db.Set("onsuccess", success)
 }
 
 // OnAppUpdate satisfies the app.AppUpdater interface. It is called when the app
@@ -24,8 +41,6 @@ func (h *Home) OnAppUpdate(ctx app.Context) {
 }
 
 func (h *Home) Render() app.UI {
-	taskIDs := h.sortedTaskIDs()
-
 	return app.Main().Class("min-h-screen bg-slate-50 text-slate-800 py-10 px-4 sm:px-6 antialiased").Body(
 		app.Div().Class("max-w-2xl mx-auto space-y-6").Body(
 			// App update banner
@@ -71,7 +86,7 @@ func (h *Home) Render() app.UI {
 			),
 
 			// Tasks list or Empty state
-			app.If(len(taskIDs) == 0, func() app.UI {
+			app.If(len(h.tasks) == 0, func() app.UI {
 				return app.Div().Class("bg-white rounded-2xl border border-dashed border-slate-200 py-14 px-6 text-center").Body(
 					app.Div().Class("text-4xl mb-3").Text("⏳"),
 					app.H3().Class("text-base font-semibold text-slate-700").Text("No tasks yet"),
@@ -79,13 +94,13 @@ func (h *Home) Render() app.UI {
 				)
 			}),
 
-			app.If(len(taskIDs) > 0, func() app.UI {
+			app.If(len(h.tasks) > 0, func() app.UI {
 				return app.Div().Class("space-y-3").Body(
-					app.Range(taskIDs).Slice(func(i int) app.UI {
-						id := taskIDs[i]
+					app.Range(h.tasks).Slice(func(i int) app.UI {
+						task := h.tasks[i]
 						return &components.Task{
-							Id:   id,
-							Data: h.tasks[id],
+							Id:   task.Id,
+							Data: task,
 						}
 					}),
 				)
@@ -108,7 +123,7 @@ func (h *Home) onUpdateClick(ctx app.Context, e app.Event) {
 func (h *Home) onTaskDelete(ctx app.Context, a app.Action) {
 	taskId := a.Value.(string)
 	ctx.LocalStorage().Del(taskId)
-	delete(h.tasks, taskId)
+	h.loadTasks(ctx.LocalStorage())
 }
 
 func (h *Home) addNewTask(ctx app.Context, e app.Event) {
@@ -116,26 +131,32 @@ func (h *Home) addNewTask(ctx app.Context, e app.Event) {
 		return
 	}
 
-	taskId := "_task_" + uuid.NewV7().String()
-
-	// Stop any currently running task before starting the new one.
-	ctx.NewActionWithValue("stopOtherTasks", taskId)
-
-	h.tasks[taskId] = models.Task{
+	newTask := models.Task{
+		Id:        uuid.NewV4().String(),
 		Name:      h.newTaskName,
 		StartUnix: time.Now().Unix(),
 	}
 
-	err := ctx.LocalStorage().Set(taskId, h.tasks[taskId])
-	if err != nil {
-		app.Log(err)
-	}
+	objectStore := h.db.Call("transaction", "tasks", "readwrite").
+		Call("objectStore", "tasks")
+	objectStore.Call("add", map[string]interface{}{
+		"id":        newTask.Id,
+		"name":      newTask.Name,
+		"startUnix": newTask.StartUnix,
+		"duration":  newTask.Duration,
+	})
+
+	// Stop any currently running task before starting the new one.
+	ctx.NewActionWithValue("stopOtherTasks", newTask.Id)
+
+	h.tasks = append(h.tasks, newTask)
 
 	h.newTaskName = ""
 }
 
 func (h *Home) loadTasks(storage app.BrowserStorage) {
-	h.tasks = make(map[string]models.Task)
+	tasks := make([]models.Task, 0)
+
 	storage.ForEach(func(key string) {
 		if !strings.HasPrefix(key, "_task_") {
 			return
@@ -148,22 +169,10 @@ func (h *Home) loadTasks(storage app.BrowserStorage) {
 			return
 		}
 
-		h.tasks[key] = data
+		tasks = append(tasks, data)
 	})
-}
 
-func (h *Home) sortedTaskIDs() []string {
-	keys := make([]string, 0, len(h.tasks))
-	for k := range h.tasks {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		if h.tasks[keys[i]].StartUnix != h.tasks[keys[j]].StartUnix {
-			return h.tasks[keys[i]].StartUnix < h.tasks[keys[j]].StartUnix
-		}
-		return keys[i] < keys[j]
-	})
-	return keys
+	h.tasks = tasks
 }
 
 type Home struct {
@@ -171,5 +180,6 @@ type Home struct {
 
 	newTaskName     string
 	updateAvailable bool
-	tasks           map[string]models.Task
+	tasks           []models.Task
+	db              app.Value
 }
