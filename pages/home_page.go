@@ -2,7 +2,6 @@ package pages
 
 import (
 	"fmt"
-	"strings"
 	"time"
 	"uuid"
 
@@ -12,7 +11,6 @@ import (
 )
 
 func (h *Home) OnMount(ctx app.Context) {
-	h.loadTasks(ctx.LocalStorage())
 	ctx.Handle("deleteTask", h.onTaskDelete)
 
 	db := app.Window().Get("indexedDB").Call("open", "test", 4)
@@ -21,6 +19,7 @@ func (h *Home) OnMount(ctx app.Context) {
 		app.Logf("IndexedDB opened successfully : %v", db.Call("toString"))
 
 		h.db = db
+		h.loadTasks()
 		return nil
 	})
 	onupgradeneeded := app.FuncOf(func(this app.Value, args []app.Value) interface{} {
@@ -123,7 +122,7 @@ func (h *Home) onUpdateClick(ctx app.Context, e app.Event) {
 func (h *Home) onTaskDelete(ctx app.Context, a app.Action) {
 	taskId := a.Value.(string)
 	ctx.LocalStorage().Del(taskId)
-	h.loadTasks(ctx.LocalStorage())
+	h.loadTasks()
 }
 
 func (h *Home) addNewTask(ctx app.Context, e app.Event) {
@@ -154,25 +153,31 @@ func (h *Home) addNewTask(ctx app.Context, e app.Event) {
 	h.newTaskName = ""
 }
 
-func (h *Home) loadTasks(storage app.BrowserStorage) {
+func (h *Home) loadTasks() {
 	tasks := make([]models.Task, 0)
 
-	storage.ForEach(func(key string) {
-		if !strings.HasPrefix(key, "_task_") {
-			return
+	objectStore := h.db.Call("transaction", "tasks").
+		Call("objectStore", "tasks")
+	cursor := objectStore.Call("openCursor")
+	cursor.Set("onsuccess", app.FuncOf(func(this app.Value, args []app.Value) any {
+		cr := args[0].Get("target").Get("result")
+		if cr.IsNull() {
+			// No more entries
+			h.tasks = tasks
+			return nil
 		}
 
-		var data models.Task
-		err := storage.Get(key, &data)
-		if err != nil {
-			app.Log(err)
-			return
+		value := cr.Get("value")
+		task := models.Task{
+			Id:        value.Get("id").String(),
+			Name:      value.Get("name").String(),
+			StartUnix: int64(value.Get("startUnix").Int()),
+			Duration:  int64(value.Get("duration").Int()),
 		}
-
-		tasks = append(tasks, data)
-	})
-
-	h.tasks = tasks
+		tasks = append(tasks, task)
+		cr.Call("continue")
+		return nil
+	}))
 }
 
 type Home struct {
