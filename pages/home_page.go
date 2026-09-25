@@ -8,29 +8,20 @@ import (
 	"github.com/maxence-charriere/go-app/v11/pkg/app"
 	"github.com/meeron/task-timer/components"
 	"github.com/meeron/task-timer/models"
+	"github.com/meeron/task-timer/pkg/indexeddb"
 )
 
 func (h *Home) OnMount(ctx app.Context) {
 	ctx.Handle("deleteTask", h.onTaskDelete)
-
-	db := app.Window().Get("indexedDB").Call("open", "test", 4)
-	success := app.FuncOf(func(this app.Value, args []app.Value) interface{} {
-		db := args[0].Get("target").Get("result")
-		app.Logf("IndexedDB opened successfully : %v", db.Call("toString"))
-
-		h.db = db
-		h.loadTasks()
-		return nil
+	db, err := indexeddb.Open("task_timer", 1, func(db indexeddb.IDBDatabase) {
+		// Handle upgrade needed
+		db.CreateObjectStore("tasks", "id")
 	})
-	onupgradeneeded := app.FuncOf(func(this app.Value, args []app.Value) interface{} {
-		db := args[0].Get("target").Get("result")
-		store := db.Call("createObjectStore", "tasks", map[string]interface{}{"keyPath": "Id"})
-		app.Logf("Object store created successfully: %v", store)
-		return nil
-	})
-
-	db.Set("onupgradeneeded", onupgradeneeded)
-	db.Set("onsuccess", success)
+	if err != nil {
+		app.Logf("Failed to open IndexedDB: %v", err)
+		return
+	}
+	app.Logf("IndexedDB opened successfully: %v", db)
 }
 
 // OnAppUpdate satisfies the app.AppUpdater interface. It is called when the app
