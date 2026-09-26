@@ -152,7 +152,7 @@ func (h *Home) onTaskSave(ctx app.Context, a app.Action) {
 
 	ctx.Async(func() {
 		store := h.db.WriteTransaction("tasks")
-		err := store.Put(map[string]interface{}{
+		err := store.Put(map[string]any{
 			"id":        task.Id,
 			"name":      task.Name,
 			"startUnix": task.StartUnix,
@@ -175,14 +175,14 @@ func (h *Home) addNewTask(ctx app.Context, e app.Event) {
 	}
 
 	newTask := models.Task{
-		Id:        uuid.NewV4().String(),
+		Id:        uuid.NewV7().String(),
 		Name:      h.newTaskName,
 		StartUnix: time.Now().Unix(),
 	}
 
 	ctx.Async(func() {
 		store := h.db.WriteTransaction("tasks")
-		err := store.Add(map[string]interface{}{
+		err := store.Add(map[string]any{
 			"id":        newTask.Id,
 			"name":      newTask.Name,
 			"startUnix": newTask.StartUnix,

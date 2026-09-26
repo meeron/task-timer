@@ -13,8 +13,8 @@ type IDBDatabase interface {
 }
 
 type IDBObjectStore interface {
-	Add(record map[string]interface{}) error
-	Put(record map[string]interface{}) error
+	Add(record map[string]any) error
+	Put(record map[string]any) error
 	Delete(key string) error
 	GetAll() ([]app.Value, error)
 }

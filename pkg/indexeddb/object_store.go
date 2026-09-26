@@ -10,7 +10,7 @@ type idbObjectStore struct {
 	value app.Value
 }
 
-func (s *idbObjectStore) Add(record map[string]interface{}) error {
+func (s *idbObjectStore) Add(record map[string]any) error {
 	resultCh := make(chan error, 1)
 	req := s.value.Call("add", record)
 	req.Set("onerror", app.FuncOf(func(this app.Value, args []app.Value) any {
@@ -25,7 +25,7 @@ func (s *idbObjectStore) Add(record map[string]interface{}) error {
 	return <-resultCh
 }
 
-func (s *idbObjectStore) Put(record map[string]interface{}) error {
+func (s *idbObjectStore) Put(record map[string]any) error {
 	resultCh := make(chan error, 1)
 	req := s.value.Call("put", record)
 	req.Set("onerror", app.FuncOf(func(this app.Value, args []app.Value) any {

@@ -7,7 +7,7 @@ type idbDatabase struct {
 }
 
 func (db *idbDatabase) CreateObjectStore(name string, keyPath string) IDBObjectStore {
-	store := db.value.Call("createObjectStore", name, map[string]interface{}{"keyPath": keyPath})
+	store := db.value.Call("createObjectStore", name, map[string]any{"keyPath": keyPath})
 	return &idbObjectStore{value: store}
 }
 
