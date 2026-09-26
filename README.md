@@ -11,7 +11,7 @@ A modern, lightweight Progressive Web Application (PWA) for tracking task time e
 - ✏️ **Edit Timer**: Adjust or set a timer duration directly from the task card. Accepts multiple input formats (see [Edit Timer formats](#edit-timer-formats)).
 - 🔂 **Single Active Timer**: Starting or resuming a task automatically stops any other running task, keeping you focused on one thing at a time.
 - 🗑️ **Delete with Confirmation**: Remove tasks through a confirmation dialog to prevent accidental deletions.
-- 💾 **Local Persistence**: Tasks are persisted across sessions directly in browser `localStorage`.
+- 💾 **Local Persistence**: Tasks are persisted across sessions in the browser's **IndexedDB** via a lightweight custom Go wrapper (`pkg/indexeddb`).
 - 📱 **Progressive Web App (PWA)**: Installable, responsive, with built-in app update notifications.
 - 🎨 **Clean UI**: Crafted with modern Tailwind CSS v4 styling, badges, and responsive layouts.
 
@@ -25,7 +25,9 @@ A modern, lightweight Progressive Web Application (PWA) for tracking task time e
 | Web Framework   | [go-app v11](https://github.com/maxence-charriere/go-app) — PWA framework for Go & WebAssembly |
 | Styling         | [Tailwind CSS v4](https://tailwindcss.com/)                                                    |
 | Package Manager | [pnpm](https://pnpm.io/)                                                                       |
-| UUID            | [google/uuid](https://github.com/google/uuid) — task ID generation                             |
+| UUID            | [`uuid`](https://go.dev/pkg/uuid) *(Go 1.27 stdlib)* — UUIDv7 task ID generation              |
+| Live Reload     | [Air](https://github.com/air-verse/air) — hot-rebuild dev server (via `go tool air`)           |
+| Persistence     | Browser **IndexedDB** — custom Go/WASM wrapper in `pkg/indexeddb`                              |
 
 ---
 
@@ -67,11 +69,13 @@ make build
 
 ### 4. Run the Application
 
-Start the server using `make`:
+Start the development server with **live-reload** via [Air](https://github.com/air-verse/air):
 
 ```bash
 make run
 ```
+
+Air watches for `.go`, `.tpl`, `.tmpl`, and `.html` file changes and automatically rebuilds the WASM binary, Tailwind stylesheet, and server binary before restarting.
 
 Open your browser at:
 
@@ -143,6 +147,11 @@ task-timer/
 │   └── models.go                  # Task model definition
 ├── pages/                         # Application pages and views
 │   └── home_page.go               # Dashboard, task input form, and list management
+├── pkg/                           # Internal packages
+│   └── indexeddb/                 # Browser IndexedDB bindings for Go/WASM
+│       ├── main.go                # IDBDatabase & IDBObjectStore interfaces + Open()
+│       ├── database.go            # idbDatabase implementation (transactions)
+│       └── object_store.go        # idbObjectStore implementation (CRUD operations)
 ├── styles/                        # Source stylesheets
 │   └── main.css                   # Tailwind CSS entrypoint
 ├── web/                           # Static web assets served by go-app
