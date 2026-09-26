@@ -8,9 +8,15 @@ import (
 
 type IDBDatabase interface {
 	CreateObjectStore(name string, keyPath string) IDBObjectStore
+	WriteTransaction(storeName string) IDBObjectStore
+	ReadTransaction(storeName string) IDBObjectStore
 }
 
 type IDBObjectStore interface {
+	Add(record map[string]interface{}) error
+	Put(record map[string]interface{}) error
+	Delete(key string) error
+	GetAll() ([]app.Value, error)
 }
 
 func Open(name string, version int, onUpgradeNeeded func(db IDBDatabase)) (IDBDatabase, error) {

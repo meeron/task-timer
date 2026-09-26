@@ -13,15 +13,23 @@ import (
 
 func (h *Home) OnMount(ctx app.Context) {
 	ctx.Handle("deleteTask", h.onTaskDelete)
-	db, err := indexeddb.Open("task_timer", 1, func(db indexeddb.IDBDatabase) {
-		// Handle upgrade needed
-		db.CreateObjectStore("tasks", "id")
+	ctx.Handle("saveTask", h.onTaskSave)
+
+	ctx.Async(func() {
+		db, err := indexeddb.Open("task_timer", 1, func(db indexeddb.IDBDatabase) {
+			// Handle upgrade needed — create object store on first run / version bump.
+			db.CreateObjectStore("tasks", "id")
+		})
+		if err != nil {
+			app.Logf("Failed to open IndexedDB: %v", err)
+			return
+		}
+
+		ctx.Dispatch(func(c app.Context) {
+			h.db = db
+			h.loadTasks(c)
+		})
 	})
-	if err != nil {
-		app.Logf("Failed to open IndexedDB: %v", err)
-		return
-	}
-	app.Logf("IndexedDB opened successfully: %v", db)
 }
 
 // OnAppUpdate satisfies the app.AppUpdater interface. It is called when the app
@@ -112,12 +120,57 @@ func (h *Home) onUpdateClick(ctx app.Context, e app.Event) {
 
 func (h *Home) onTaskDelete(ctx app.Context, a app.Action) {
 	taskId := a.Value.(string)
-	ctx.LocalStorage().Del(taskId)
-	h.loadTasks()
+
+	if h.db == nil {
+		app.Logf("Cannot delete task: IndexedDB not ready")
+		return
+	}
+
+	ctx.Async(func() {
+		store := h.db.WriteTransaction("tasks")
+		if err := store.Delete(taskId); err != nil {
+			app.Logf("Failed to delete task %s: %v", taskId, err)
+		}
+		ctx.Dispatch(func(c app.Context) {
+			h.loadTasks(c)
+		})
+	})
+}
+
+// onTaskSave is fired by task components when they need to persist state
+// changes (stop, resume, edit). The action value is the updated models.Task.
+func (h *Home) onTaskSave(ctx app.Context, a app.Action) {
+	task, ok := a.Value.(models.Task)
+	if !ok {
+		return
+	}
+
+	if h.db == nil {
+		app.Logf("Cannot save task: IndexedDB not ready")
+		return
+	}
+
+	ctx.Async(func() {
+		store := h.db.WriteTransaction("tasks")
+		err := store.Put(map[string]interface{}{
+			"id":        task.Id,
+			"name":      task.Name,
+			"startUnix": task.StartUnix,
+			"duration":  task.Duration,
+		})
+		if err != nil {
+			app.Logf("Failed to save task %s: %v", task.Id, err)
+		}
+	})
 }
 
 func (h *Home) addNewTask(ctx app.Context, e app.Event) {
 	if h.newTaskName == "" {
+		return
+	}
+
+	if h.db == nil {
+		app.Logf("Cannot add task: IndexedDB not ready")
 		return
 	}
 
@@ -127,48 +180,53 @@ func (h *Home) addNewTask(ctx app.Context, e app.Event) {
 		StartUnix: time.Now().Unix(),
 	}
 
-	objectStore := h.db.Call("transaction", "tasks", "readwrite").
-		Call("objectStore", "tasks")
-	objectStore.Call("add", map[string]interface{}{
-		"id":        newTask.Id,
-		"name":      newTask.Name,
-		"startUnix": newTask.StartUnix,
-		"duration":  newTask.Duration,
+	ctx.Async(func() {
+		store := h.db.WriteTransaction("tasks")
+		err := store.Add(map[string]interface{}{
+			"id":        newTask.Id,
+			"name":      newTask.Name,
+			"startUnix": newTask.StartUnix,
+			"duration":  newTask.Duration,
+		})
+		if err != nil {
+			app.Logf("Failed to add task: %v", err)
+		}
 	})
 
 	// Stop any currently running task before starting the new one.
 	ctx.NewActionWithValue("stopOtherTasks", newTask.Id)
 
 	h.tasks = append(h.tasks, newTask)
-
 	h.newTaskName = ""
 }
 
-func (h *Home) loadTasks() {
-	tasks := make([]models.Task, 0)
+func (h *Home) loadTasks(ctx app.Context) {
+	if h.db == nil {
+		return
+	}
 
-	objectStore := h.db.Call("transaction", "tasks").
-		Call("objectStore", "tasks")
-	cursor := objectStore.Call("openCursor")
-	cursor.Set("onsuccess", app.FuncOf(func(this app.Value, args []app.Value) any {
-		cr := args[0].Get("target").Get("result")
-		if cr.IsNull() {
-			// No more entries
+	ctx.Async(func() {
+		store := h.db.ReadTransaction("tasks")
+		values, err := store.GetAll()
+		if err != nil {
+			app.Logf("Failed to load tasks: %v", err)
+			return
+		}
+
+		tasks := make([]models.Task, 0, len(values))
+		for _, v := range values {
+			tasks = append(tasks, models.Task{
+				Id:        v.Get("id").String(),
+				Name:      v.Get("name").String(),
+				StartUnix: int64(v.Get("startUnix").Int()),
+				Duration:  int64(v.Get("duration").Int()),
+			})
+		}
+
+		ctx.Dispatch(func(c app.Context) {
 			h.tasks = tasks
-			return nil
-		}
-
-		value := cr.Get("value")
-		task := models.Task{
-			Id:        value.Get("id").String(),
-			Name:      value.Get("name").String(),
-			StartUnix: int64(value.Get("startUnix").Int()),
-			Duration:  int64(value.Get("duration").Int()),
-		}
-		tasks = append(tasks, task)
-		cr.Call("continue")
-		return nil
-	}))
+		})
+	})
 }
 
 type Home struct {
@@ -177,5 +235,5 @@ type Home struct {
 	newTaskName     string
 	updateAvailable bool
 	tasks           []models.Task
-	db              app.Value
+	db              indexeddb.IDBDatabase
 }

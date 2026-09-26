@@ -10,3 +10,13 @@ func (db *idbDatabase) CreateObjectStore(name string, keyPath string) IDBObjectS
 	store := db.value.Call("createObjectStore", name, map[string]interface{}{"keyPath": keyPath})
 	return &idbObjectStore{value: store}
 }
+
+func (db *idbDatabase) WriteTransaction(storeName string) IDBObjectStore {
+	store := db.value.Call("transaction", storeName, "readwrite").Call("objectStore", storeName)
+	return &idbObjectStore{value: store}
+}
+
+func (db *idbDatabase) ReadTransaction(storeName string) IDBObjectStore {
+	store := db.value.Call("transaction", storeName, "readonly").Call("objectStore", storeName)
+	return &idbObjectStore{value: store}
+}
