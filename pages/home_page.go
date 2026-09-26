@@ -2,19 +2,34 @@ package pages
 
 import (
 	"fmt"
-	"sort"
-	"strings"
 	"time"
 	"uuid"
 
 	"github.com/maxence-charriere/go-app/v11/pkg/app"
 	"github.com/meeron/task-timer/components"
 	"github.com/meeron/task-timer/models"
+	"github.com/meeron/task-timer/pkg/indexeddb"
 )
 
 func (h *Home) OnMount(ctx app.Context) {
-	h.loadTasks(ctx.LocalStorage())
 	ctx.Handle("deleteTask", h.onTaskDelete)
+	ctx.Handle("saveTask", h.onTaskSave)
+
+	ctx.Async(func() {
+		db, err := indexeddb.Open("task_timer", 1, func(db indexeddb.IDBDatabase) {
+			// Handle upgrade needed — create object store on first run / version bump.
+			db.CreateObjectStore("tasks", "id")
+		})
+		if err != nil {
+			app.Logf("Failed to open IndexedDB: %v", err)
+			return
+		}
+
+		ctx.Dispatch(func(c app.Context) {
+			h.db = db
+			h.loadTasks(c)
+		})
+	})
 }
 
 // OnAppUpdate satisfies the app.AppUpdater interface. It is called when the app
@@ -24,8 +39,6 @@ func (h *Home) OnAppUpdate(ctx app.Context) {
 }
 
 func (h *Home) Render() app.UI {
-	taskIDs := h.sortedTaskIDs()
-
 	return app.Main().Class("min-h-screen bg-slate-50 text-slate-800 py-10 px-4 sm:px-6 antialiased").Body(
 		app.Div().Class("max-w-2xl mx-auto space-y-6").Body(
 			// App update banner
@@ -71,7 +84,7 @@ func (h *Home) Render() app.UI {
 			),
 
 			// Tasks list or Empty state
-			app.If(len(taskIDs) == 0, func() app.UI {
+			app.If(len(h.tasks) == 0, func() app.UI {
 				return app.Div().Class("bg-white rounded-2xl border border-dashed border-slate-200 py-14 px-6 text-center").Body(
 					app.Div().Class("text-4xl mb-3").Text("⏳"),
 					app.H3().Class("text-base font-semibold text-slate-700").Text("No tasks yet"),
@@ -79,13 +92,13 @@ func (h *Home) Render() app.UI {
 				)
 			}),
 
-			app.If(len(taskIDs) > 0, func() app.UI {
+			app.If(len(h.tasks) > 0, func() app.UI {
 				return app.Div().Class("space-y-3").Body(
-					app.Range(taskIDs).Slice(func(i int) app.UI {
-						id := taskIDs[i]
+					app.Range(h.tasks).Slice(func(i int) app.UI {
+						task := h.tasks[i]
 						return &components.Task{
-							Id:   id,
-							Data: h.tasks[id],
+							Id:   task.Id,
+							Data: task,
 						}
 					}),
 				)
@@ -107,8 +120,48 @@ func (h *Home) onUpdateClick(ctx app.Context, e app.Event) {
 
 func (h *Home) onTaskDelete(ctx app.Context, a app.Action) {
 	taskId := a.Value.(string)
-	ctx.LocalStorage().Del(taskId)
-	delete(h.tasks, taskId)
+
+	if h.db == nil {
+		app.Logf("Cannot delete task: IndexedDB not ready")
+		return
+	}
+
+	ctx.Async(func() {
+		store := h.db.WriteTransaction("tasks")
+		if err := store.Delete(taskId); err != nil {
+			app.Logf("Failed to delete task %s: %v", taskId, err)
+		}
+		ctx.Dispatch(func(c app.Context) {
+			h.loadTasks(c)
+		})
+	})
+}
+
+// onTaskSave is fired by task components when they need to persist state
+// changes (stop, resume, edit). The action value is the updated models.Task.
+func (h *Home) onTaskSave(ctx app.Context, a app.Action) {
+	task, ok := a.Value.(models.Task)
+	if !ok {
+		return
+	}
+
+	if h.db == nil {
+		app.Logf("Cannot save task: IndexedDB not ready")
+		return
+	}
+
+	ctx.Async(func() {
+		store := h.db.WriteTransaction("tasks")
+		err := store.Put(map[string]any{
+			"id":        task.Id,
+			"name":      task.Name,
+			"startUnix": task.StartUnix,
+			"duration":  task.Duration,
+		})
+		if err != nil {
+			app.Logf("Failed to save task %s: %v", task.Id, err)
+		}
+	})
 }
 
 func (h *Home) addNewTask(ctx app.Context, e app.Event) {
@@ -116,54 +169,64 @@ func (h *Home) addNewTask(ctx app.Context, e app.Event) {
 		return
 	}
 
-	taskId := "_task_" + uuid.NewV7().String()
+	if h.db == nil {
+		app.Logf("Cannot add task: IndexedDB not ready")
+		return
+	}
 
-	// Stop any currently running task before starting the new one.
-	ctx.NewActionWithValue("stopOtherTasks", taskId)
-
-	h.tasks[taskId] = models.Task{
+	newTask := models.Task{
+		Id:        uuid.NewV7().String(),
 		Name:      h.newTaskName,
 		StartUnix: time.Now().Unix(),
 	}
 
-	err := ctx.LocalStorage().Set(taskId, h.tasks[taskId])
-	if err != nil {
-		app.Log(err)
-	}
+	ctx.Async(func() {
+		store := h.db.WriteTransaction("tasks")
+		err := store.Add(map[string]any{
+			"id":        newTask.Id,
+			"name":      newTask.Name,
+			"startUnix": newTask.StartUnix,
+			"duration":  newTask.Duration,
+		})
+		if err != nil {
+			app.Logf("Failed to add task: %v", err)
+		}
+	})
 
+	// Stop any currently running task before starting the new one.
+	ctx.NewActionWithValue("stopOtherTasks", newTask.Id)
+
+	h.tasks = append(h.tasks, newTask)
 	h.newTaskName = ""
 }
 
-func (h *Home) loadTasks(storage app.BrowserStorage) {
-	h.tasks = make(map[string]models.Task)
-	storage.ForEach(func(key string) {
-		if !strings.HasPrefix(key, "_task_") {
-			return
-		}
-
-		var data models.Task
-		err := storage.Get(key, &data)
-		if err != nil {
-			app.Log(err)
-			return
-		}
-
-		h.tasks[key] = data
-	})
-}
-
-func (h *Home) sortedTaskIDs() []string {
-	keys := make([]string, 0, len(h.tasks))
-	for k := range h.tasks {
-		keys = append(keys, k)
+func (h *Home) loadTasks(ctx app.Context) {
+	if h.db == nil {
+		return
 	}
-	sort.Slice(keys, func(i, j int) bool {
-		if h.tasks[keys[i]].StartUnix != h.tasks[keys[j]].StartUnix {
-			return h.tasks[keys[i]].StartUnix < h.tasks[keys[j]].StartUnix
+
+	ctx.Async(func() {
+		store := h.db.ReadTransaction("tasks")
+		values, err := store.GetAll()
+		if err != nil {
+			app.Logf("Failed to load tasks: %v", err)
+			return
 		}
-		return keys[i] < keys[j]
+
+		tasks := make([]models.Task, 0, len(values))
+		for _, v := range values {
+			tasks = append(tasks, models.Task{
+				Id:        v.Get("id").String(),
+				Name:      v.Get("name").String(),
+				StartUnix: int64(v.Get("startUnix").Int()),
+				Duration:  int64(v.Get("duration").Int()),
+			})
+		}
+
+		ctx.Dispatch(func(c app.Context) {
+			h.tasks = tasks
+		})
 	})
-	return keys
 }
 
 type Home struct {
@@ -171,5 +234,6 @@ type Home struct {
 
 	newTaskName     string
 	updateAvailable bool
-	tasks           map[string]models.Task
+	tasks           []models.Task
+	db              indexeddb.IDBDatabase
 }

@@ -121,7 +121,7 @@ func (t *Task) OnMount(ctx app.Context) {
 			t.ticker.Stop()
 			t.isRunning = false
 			t.Data.Duration = int64(t.duration)
-			c.LocalStorage().Set(t.Id, t.Data)
+			c.NewActionWithValue("saveTask", t.Data)
 		}
 	})
 
@@ -153,7 +153,7 @@ func (t *Task) onStop(ctx app.Context, e app.Event) {
 
 	// t.Data is not updated
 	t.Data.Duration = int64(t.duration)
-	ctx.LocalStorage().Set(t.Id, t.Data)
+	ctx.NewActionWithValue("saveTask", t.Data)
 }
 
 func (t *Task) onResume(ctx app.Context, e app.Event) {
@@ -164,7 +164,7 @@ func (t *Task) onResume(ctx app.Context, e app.Event) {
 
 	t.Data.StartUnix = t.startUnix
 	t.Data.Duration = 0
-	ctx.LocalStorage().Set(t.Id, t.Data)
+	ctx.NewActionWithValue("saveTask", t.Data)
 
 	t.ticker.Reset(1 * time.Second)
 }
@@ -190,10 +190,10 @@ func (t *Task) onSaveEdit(ctx app.Context, newDuration time.Duration) {
 		t.startUnix = time.Now().Unix() - int64(newDuration.Seconds())
 		t.Data.StartUnix = t.startUnix
 		t.Data.Duration = 0
-		ctx.LocalStorage().Set(t.Id, t.Data)
+		ctx.NewActionWithValue("saveTask", t.Data)
 	} else {
 		t.Data.Duration = int64(t.duration)
-		ctx.LocalStorage().Set(t.Id, t.Data)
+		ctx.NewActionWithValue("saveTask", t.Data)
 	}
 
 	t.isEditing = false
