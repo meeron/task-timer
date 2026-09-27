@@ -150,6 +150,15 @@ func (h *Home) onTaskSave(ctx app.Context, a app.Action) {
 		return
 	}
 
+	// Keep the in-memory list in sync so a later re-render doesn't pass stale
+	// props (e.g. the old name) back into the task component.
+	for i := range h.tasks {
+		if h.tasks[i].Id == task.Id {
+			h.tasks[i] = task
+			break
+		}
+	}
+
 	ctx.Async(func() {
 		store := h.db.WriteTransaction("tasks")
 		err := store.Put(map[string]any{

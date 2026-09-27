@@ -71,7 +71,7 @@ func (t *Task) Render() app.UI {
 				),
 			),
 
-			// Tailwind dialog for editing timer
+			// Tailwind dialog for editing task name and timer
 			app.If(t.isEditing, func() app.UI {
 				return &EditDialog{
 					TaskName:     t.Data.Name,
@@ -184,7 +184,8 @@ func (t *Task) onCancelEdit(ctx app.Context) {
 	t.isEditing = false
 }
 
-func (t *Task) onSaveEdit(ctx app.Context, newDuration time.Duration) {
+func (t *Task) onSaveEdit(ctx app.Context, newName string, newDuration time.Duration) {
+	t.Data.Name = newName
 	t.duration = newDuration
 	if t.isRunning {
 		t.startUnix = time.Now().Unix() - int64(newDuration.Seconds())

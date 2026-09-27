@@ -8,7 +8,7 @@ A modern, lightweight Progressive Web Application (PWA) for tracking task time e
 
 - ⏱️ **Real-Time Tracking**: Live timers with active status indicators (running vs. stopped) and formatted duration displays (`HHh MMm SSs` / `MMm SSs`).
 - ⏯️ **Pause & Resume**: Stop and resume tasks anytime without losing accumulated time.
-- ✏️ **Edit Timer**: Adjust or set a timer duration directly from the task card. Accepts multiple input formats (see [Edit Timer formats](#edit-timer-formats)).
+- ✏️ **Edit Task**: Rename a task and adjust or set its timer duration directly from the task card. Accepts multiple input formats (see [Edit Timer formats](#edit-timer-formats)).
 - 🔂 **Single Active Timer**: Starting or resuming a task automatically stops any other running task, keeping you focused on one thing at a time.
 - 🗑️ **Delete with Confirmation**: Remove tasks through a confirmation dialog to prevent accidental deletions.
 - 💾 **Local Persistence**: Tasks are persisted across sessions in the browser's **IndexedDB** via a lightweight custom Go wrapper (`pkg/indexeddb`).

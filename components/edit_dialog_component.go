@@ -14,14 +14,18 @@ type EditDialog struct {
 
 	TaskName     string
 	InitialValue string
-	OnSave       func(ctx app.Context, d time.Duration)
+	OnSave       func(ctx app.Context, name string, d time.Duration)
 	OnCancel     func(ctx app.Context)
 
-	input    string
-	errorMsg string
+	name         string
+	nameErrorMsg string
+	input        string
+	errorMsg     string
 }
 
 func (d *EditDialog) OnMount(ctx app.Context) {
+	d.name = d.TaskName
+	d.nameErrorMsg = ""
 	d.input = d.InitialValue
 	d.errorMsg = ""
 }
@@ -47,7 +51,7 @@ func (d *EditDialog) Render() app.UI {
 							app.Div().Class("h-9 w-9 shrink-0 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg").
 								Body(app.Span().Text("⏱️")),
 							app.Div().Class("min-w-0").Body(
-								app.H3().Class("text-sm font-bold text-slate-900").Text("Edit Timer"),
+								app.H3().Class("text-sm font-bold text-slate-900").Text("Edit Task"),
 								app.P().Class("text-xs text-slate-500 truncate").Text(d.TaskName),
 							),
 						),
@@ -58,7 +62,23 @@ func (d *EditDialog) Render() app.UI {
 							OnClick(d.handleCancel),
 					),
 
-					// Input field
+					// Name field
+					app.Div().Class("space-y-2").Body(
+						app.Label().Class("block text-xs font-semibold text-slate-700").Text("Task name"),
+						app.Input().
+							Class("w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all").
+							Type("text").
+							Placeholder("What are you working on?").
+							Value(d.name).
+							OnInput(d.ValueTo(&d.name)).
+							OnChange(d.ValueTo(&d.name)).
+							OnKeyDown(d.onKeyDown),
+						app.If(d.nameErrorMsg != "", func() app.UI {
+							return app.P().Class("text-xs text-red-600 font-medium").Text(d.nameErrorMsg)
+						}),
+					),
+
+					// Duration field
 					app.Div().Class("space-y-2").Body(
 						app.Label().Class("block text-xs font-semibold text-slate-700").Text("Timer duration (template: 1h 15m)"),
 						app.Input().
@@ -114,20 +134,30 @@ func (d *EditDialog) handleCancel(ctx app.Context, e app.Event) {
 }
 
 func (d *EditDialog) handleSave(ctx app.Context, e app.Event) {
+	d.nameErrorMsg = ""
+	d.errorMsg = ""
+
+	name := strings.TrimSpace(d.name)
+	if name == "" {
+		d.nameErrorMsg = "Please enter a task name"
+	}
+
+	var newDuration time.Duration
 	input := strings.TrimSpace(d.input)
 	if input == "" {
 		d.errorMsg = "Please enter a duration (e.g. 1h 15m)"
-		return
+	} else if parsed, err := parseDurationInput(input); err != nil {
+		d.errorMsg = "Invalid time format. Example: 1h 15m"
+	} else {
+		newDuration = parsed
 	}
 
-	newDuration, err := parseDurationInput(input)
-	if err != nil {
-		d.errorMsg = "Invalid time format. Example: 1h 15m"
+	if d.nameErrorMsg != "" || d.errorMsg != "" {
 		return
 	}
 
 	if d.OnSave != nil {
-		d.OnSave(ctx, newDuration)
+		d.OnSave(ctx, name, newDuration)
 	}
 }
 
