@@ -40,6 +40,9 @@ func (t *Task) Render() app.UI {
 					}),
 				),
 				app.H3().Class("text-base font-semibold text-slate-900 truncate").Text(t.Data.Name),
+				app.If(t.Data.Description != "", func() app.UI {
+					return app.P().Class("text-sm text-slate-500 whitespace-pre-line break-words").Text(t.Data.Description)
+				}),
 			),
 
 			// Right side: Timer display & Action buttons
@@ -74,10 +77,11 @@ func (t *Task) Render() app.UI {
 			// Tailwind dialog for editing task name and timer
 			app.If(t.isEditing, func() app.UI {
 				return &EditDialog{
-					TaskName:     t.Data.Name,
-					InitialValue: formatDurationTemplate(t.currentDuration()),
-					OnSave:       t.onSaveEdit,
-					OnCancel:     t.onCancelEdit,
+					TaskName:        t.Data.Name,
+					TaskDescription: t.Data.Description,
+					InitialValue:    formatDurationTemplate(t.currentDuration()),
+					OnSave:          t.onSaveEdit,
+					OnCancel:        t.onCancelEdit,
 				}
 			}),
 
@@ -184,8 +188,9 @@ func (t *Task) onCancelEdit(ctx app.Context) {
 	t.isEditing = false
 }
 
-func (t *Task) onSaveEdit(ctx app.Context, newName string, newDuration time.Duration) {
+func (t *Task) onSaveEdit(ctx app.Context, newName, newDescription string, newDuration time.Duration) {
 	t.Data.Name = newName
+	t.Data.Description = newDescription
 	t.duration = newDuration
 	if t.isRunning {
 		t.startUnix = time.Now().Unix() - int64(newDuration.Seconds())
