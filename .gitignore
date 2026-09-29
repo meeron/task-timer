@@ -5,3 +5,4 @@ styles.build-*.css
 web/*.css
 .DS_Store
 tmp
+.env

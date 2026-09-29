@@ -171,13 +171,7 @@ func (h *Home) onTaskSave(ctx app.Context, a app.Action) {
 
 	ctx.Async(func() {
 		store := h.db.WriteTransaction("tasks")
-		err := store.Put(map[string]any{
-			"id":          task.Id,
-			"name":        task.Name,
-			"description": task.Description,
-			"startUnix":   task.StartUnix,
-			"duration":    task.Duration,
-		})
+		err := store.Put(taskRecord(task))
 		if err != nil {
 			app.Logf("Failed to save task %s: %v", task.Id, err)
 		}
@@ -203,13 +197,7 @@ func (h *Home) addNewTask(ctx app.Context, e app.Event) {
 
 	ctx.Async(func() {
 		store := h.db.WriteTransaction("tasks")
-		err := store.Add(map[string]any{
-			"id":          newTask.Id,
-			"name":        newTask.Name,
-			"description": newTask.Description,
-			"startUnix":   newTask.StartUnix,
-			"duration":    newTask.Duration,
-		})
+		err := store.Add(taskRecord(newTask))
 		if err != nil {
 			app.Logf("Failed to add task: %v", err)
 		}
@@ -248,6 +236,9 @@ func (h *Home) loadTasks(ctx app.Context) {
 			if d := v.Get("description"); d.Truthy() {
 				task.Description = d.String()
 			}
+			if l := v.Get("loggedUnix"); l.Truthy() {
+				task.LoggedUnix = int64(l.Int())
+			}
 			tasks = append(tasks, task)
 		}
 
@@ -255,6 +246,18 @@ func (h *Home) loadTasks(ctx app.Context) {
 			h.tasks = tasks
 		})
 	})
+}
+
+// taskRecord maps a task to its IndexedDB record.
+func taskRecord(task models.Task) map[string]any {
+	return map[string]any{
+		"id":          task.Id,
+		"name":        task.Name,
+		"description": task.Description,
+		"startUnix":   task.StartUnix,
+		"duration":    task.Duration,
+		"loggedUnix":  task.LoggedUnix,
+	}
 }
 
 type Home struct {

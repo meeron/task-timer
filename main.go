@@ -1,17 +1,40 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/maxence-charriere/go-app/v11/pkg/app"
 	"github.com/meeron/task-timer/pages"
+	"github.com/meeron/task-timer/pkg/jira"
 )
 
 func main() {
 	app.Route("/", func() app.Composer { return &pages.Home{} })
 	app.RunWhenOnBrowser()
+
+	// Local development: load variables from .env if present. Variables already
+	// set in the environment (e.g. docker run -e) take precedence.
+	if err := godotenv.Load(); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("Warning: failed to load .env: %v", err)
+	}
+
+	// Optional Jira integration: the worklog proxy is registered and the client
+	// is told to show the "Add worklog" button only when fully configured.
+	env := map[string]string{}
+	jiraCfg, err := jira.ConfigFromEnv(os.Getenv)
+	switch {
+	case err == nil:
+		http.Handle("POST "+jira.WorklogPath, jira.NewWorklogHandler(jira.NewClient(jiraCfg)))
+		env[jira.EnabledEnvKey] = "true"
+		fmt.Printf("Jira integration enabled (%s)\n", jiraCfg.BaseURL)
+	case !errors.Is(err, jira.ErrNotConfigured):
+		log.Printf("Warning: %v", err)
+	}
 
 	// Standard HTTP routing (server-side):
 	http.Handle("/", &app.Handler{
@@ -21,6 +44,7 @@ func main() {
 		Styles:          []string{"web/styles.css"},
 		BackgroundColor: "#f8fafc",
 		ThemeColor:      "#4f46e5",
+		Env:             env,
 		Icon: app.Icon{
 			// 192x192 – standard PWA icon (also used as page icon fallback)
 			Default: "/web/favicon-192x192.png",
