@@ -2,6 +2,7 @@ package pages
 
 import (
 	"fmt"
+	"strings"
 	"time"
 	"uuid"
 
@@ -68,19 +69,28 @@ func (h *Home) Render() app.UI {
 			),
 
 			// Task input card
-			app.Div().Class("bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row gap-2").Body(
-				app.Input().
-					Class("flex-1 px-4 py-2.5 rounded-xl bg-slate-50/70 border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all").
-					Type("text").
-					Placeholder("What are you working on?").
-					Value(h.newTaskName).
-					OnChange(h.ValueTo(&h.newTaskName)).
-					OnKeyDown(h.onInputKeyDown),
-				app.Button().
-					Class("inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-sm font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50").
-					Disabled(h.newTaskName == "").
-					OnClick(h.addNewTask).
-					Text("Start task"),
+			app.Div().Class("bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col gap-2").Body(
+				app.Div().Class("flex flex-col sm:flex-row gap-2").Body(
+					app.Input().
+						Class("flex-1 px-4 py-2.5 rounded-xl bg-slate-50/70 border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all").
+						Type("text").
+						Placeholder("What are you working on?").
+						Value(h.newTaskName).
+						OnChange(h.ValueTo(&h.newTaskName)).
+						OnKeyDown(h.onInputKeyDown),
+					app.Button().
+						Class("inline-flex items-center justify-center gap-1.5 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-sm font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50").
+						Disabled(h.newTaskName == "").
+						OnClick(h.addNewTask).
+						Text("Start task"),
+				),
+				app.Textarea().
+					Class("w-full px-4 py-2.5 rounded-xl bg-slate-50/70 border border-slate-200 text-sm text-slate-800 placeholder-slate-400 resize-y focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all").
+					Rows(2).
+					Placeholder("Description (optional)").
+					Attr("value", h.newTaskDescription).
+					OnInput(h.ValueTo(&h.newTaskDescription)).
+					OnChange(h.ValueTo(&h.newTaskDescription)),
 			),
 
 			// Tasks list or Empty state
@@ -162,10 +172,11 @@ func (h *Home) onTaskSave(ctx app.Context, a app.Action) {
 	ctx.Async(func() {
 		store := h.db.WriteTransaction("tasks")
 		err := store.Put(map[string]any{
-			"id":        task.Id,
-			"name":      task.Name,
-			"startUnix": task.StartUnix,
-			"duration":  task.Duration,
+			"id":          task.Id,
+			"name":        task.Name,
+			"description": task.Description,
+			"startUnix":   task.StartUnix,
+			"duration":    task.Duration,
 		})
 		if err != nil {
 			app.Logf("Failed to save task %s: %v", task.Id, err)
@@ -184,18 +195,20 @@ func (h *Home) addNewTask(ctx app.Context, e app.Event) {
 	}
 
 	newTask := models.Task{
-		Id:        uuid.NewV7().String(),
-		Name:      h.newTaskName,
-		StartUnix: time.Now().Unix(),
+		Id:          uuid.NewV7().String(),
+		Name:        h.newTaskName,
+		Description: strings.TrimSpace(h.newTaskDescription),
+		StartUnix:   time.Now().Unix(),
 	}
 
 	ctx.Async(func() {
 		store := h.db.WriteTransaction("tasks")
 		err := store.Add(map[string]any{
-			"id":        newTask.Id,
-			"name":      newTask.Name,
-			"startUnix": newTask.StartUnix,
-			"duration":  newTask.Duration,
+			"id":          newTask.Id,
+			"name":        newTask.Name,
+			"description": newTask.Description,
+			"startUnix":   newTask.StartUnix,
+			"duration":    newTask.Duration,
 		})
 		if err != nil {
 			app.Logf("Failed to add task: %v", err)
@@ -207,6 +220,7 @@ func (h *Home) addNewTask(ctx app.Context, e app.Event) {
 
 	h.tasks = append(h.tasks, newTask)
 	h.newTaskName = ""
+	h.newTaskDescription = ""
 }
 
 func (h *Home) loadTasks(ctx app.Context) {
@@ -224,12 +238,17 @@ func (h *Home) loadTasks(ctx app.Context) {
 
 		tasks := make([]models.Task, 0, len(values))
 		for _, v := range values {
-			tasks = append(tasks, models.Task{
+			task := models.Task{
 				Id:        v.Get("id").String(),
 				Name:      v.Get("name").String(),
 				StartUnix: int64(v.Get("startUnix").Int()),
 				Duration:  int64(v.Get("duration").Int()),
-			})
+			}
+			// Records created before descriptions existed have no such key.
+			if d := v.Get("description"); d.Truthy() {
+				task.Description = d.String()
+			}
+			tasks = append(tasks, task)
 		}
 
 		ctx.Dispatch(func(c app.Context) {
@@ -241,8 +260,9 @@ func (h *Home) loadTasks(ctx app.Context) {
 type Home struct {
 	app.Compo
 
-	newTaskName     string
-	updateAvailable bool
-	tasks           []models.Task
-	db              indexeddb.IDBDatabase
+	newTaskName        string
+	newTaskDescription string
+	updateAvailable    bool
+	tasks              []models.Task
+	db                 indexeddb.IDBDatabase
 }

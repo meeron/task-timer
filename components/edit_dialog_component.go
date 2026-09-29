@@ -12,13 +12,15 @@ import (
 type EditDialog struct {
 	app.Compo
 
-	TaskName     string
-	InitialValue string
-	OnSave       func(ctx app.Context, name string, d time.Duration)
-	OnCancel     func(ctx app.Context)
+	TaskName        string
+	TaskDescription string
+	InitialValue    string
+	OnSave          func(ctx app.Context, name, description string, d time.Duration)
+	OnCancel        func(ctx app.Context)
 
 	name         string
 	nameErrorMsg string
+	description  string
 	input        string
 	errorMsg     string
 }
@@ -26,6 +28,7 @@ type EditDialog struct {
 func (d *EditDialog) OnMount(ctx app.Context) {
 	d.name = d.TaskName
 	d.nameErrorMsg = ""
+	d.description = d.TaskDescription
 	d.input = d.InitialValue
 	d.errorMsg = ""
 }
@@ -76,6 +79,18 @@ func (d *EditDialog) Render() app.UI {
 						app.If(d.nameErrorMsg != "", func() app.UI {
 							return app.P().Class("text-xs text-red-600 font-medium").Text(d.nameErrorMsg)
 						}),
+					),
+
+					// Description field
+					app.Div().Class("space-y-2").Body(
+						app.Label().Class("block text-xs font-semibold text-slate-700").Text("Description (optional)"),
+						app.Textarea().
+							Class("w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-800 placeholder-slate-400 resize-y focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all").
+							Rows(3).
+							Placeholder("Add more details…").
+							Attr("value", d.description).
+							OnInput(d.ValueTo(&d.description)).
+							OnChange(d.ValueTo(&d.description)),
 					),
 
 					// Duration field
@@ -157,13 +172,14 @@ func (d *EditDialog) handleSave(ctx app.Context, e app.Event) {
 	}
 
 	if d.OnSave != nil {
-		d.OnSave(ctx, name, newDuration)
+		d.OnSave(ctx, name, strings.TrimSpace(d.description), newDuration)
 	}
 }
 
 func (d *EditDialog) onKeyDown(ctx app.Context, e app.Event) {
 	key := e.Get("key").String()
-	if key == "Enter" {
+	// Enter inserts a newline in the description textarea instead of saving.
+	if key == "Enter" && e.Get("target").Get("tagName").String() != "TEXTAREA" {
 		d.handleSave(ctx, e)
 	} else if key == "Escape" {
 		d.handleCancel(ctx, e)
