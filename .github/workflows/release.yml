@@ -14,9 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          # Full history and tags, needed to list commits since the previous release
-          fetch-depth: 0
 
       - uses: docker/setup-buildx-action@v3
 
@@ -57,25 +54,6 @@ jobs:
           TAG: ${{ github.ref_name }}
           IMAGE: ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
         run: |
-          prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' "$TAG^" 2>/dev/null || true)
-          if [ -n "$prev" ]; then
-            range="$prev..$TAG"
-            heading="## Changes since $prev"
-          else
-            range="$TAG"
-            heading="## Changes"
-          fi
-
-          {
-            echo "$heading"
-            echo
-            git log --no-merges --pretty='- %s (%h)' "$range"
-            echo
-            echo "## Docker image"
-            echo
-            echo '```'
-            echo "docker pull $IMAGE"
-            echo '```'
-          } > release-notes.md
-
-          gh release create "$TAG" --title "$TAG" --notes-file release-notes.md --verify-tag
+          # GitHub appends its generated notes (merged PRs since the previous release) after these
+          notes=$(printf '## Docker image\n\n```\ndocker pull %s\n```\n' "$IMAGE")
+          gh release create "$TAG" --title "$TAG" --notes "$notes" --generate-notes --verify-tag
