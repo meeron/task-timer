@@ -1,10 +1,6 @@
 package components
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
-	"net/http"
 	"strings"
 	"time"
 
@@ -19,6 +15,7 @@ type WorklogDialog struct {
 	TaskDescription string
 	Duration        time.Duration
 	LoggedUnix      int64
+	Config          jira.Config
 	OnLogged        func(ctx app.Context)
 	OnCancel        func(ctx app.Context)
 
@@ -200,7 +197,7 @@ func (d *WorklogDialog) handleSubmit(ctx app.Context, e app.Event) {
 
 	d.submitting = true
 	ctx.Async(func() {
-		err := postWorklog(req)
+		err := postJiraProxy(jira.WorklogPath, jira.ProxyRequest{Config: d.Config, Worklog: req}, nil)
 		ctx.Dispatch(func(c app.Context) {
 			d.submitting = false
 			if err != nil {
@@ -228,34 +225,4 @@ func (d *WorklogDialog) onKeyDown(ctx app.Context, e app.Event) {
 // with minute precision.
 func worklogSeconds(d time.Duration) int64 {
 	return int64(d.Round(time.Minute).Seconds())
-}
-
-// postWorklog sends the worklog to the server's Jira proxy. It blocks, so it
-// must be called inside ctx.Async.
-func postWorklog(req jira.WorklogRequest) error {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return err
-	}
-
-	endpoint := app.Window().URL()
-	endpoint.Path = jira.WorklogPath
-	endpoint.RawQuery = ""
-	endpoint.Fragment = ""
-
-	resp, err := http.Post(endpoint.String(), "application/json", bytes.NewReader(body))
-	if err != nil {
-		return errors.New("Could not reach the server")
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusCreated {
-		return nil
-	}
-
-	var errResp jira.ErrorResponse
-	if json.NewDecoder(resp.Body).Decode(&errResp) == nil && errResp.Error != "" {
-		return errors.New(errResp.Error)
-	}
-	return errors.New("Failed to add worklog (HTTP " + resp.Status + ")")
 }

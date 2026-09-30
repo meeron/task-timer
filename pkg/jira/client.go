@@ -13,50 +13,8 @@ import (
 	"time"
 )
 
-// ErrNotConfigured is returned by ConfigFromEnv when none of the Jira
-// variables are set, i.e. the integration is intentionally disabled.
-var ErrNotConfigured = errors.New("jira integration not configured")
-
 // startedLayout is the timestamp format Jira expects for worklog "started".
 const startedLayout = "2006-01-02T15:04:05.000-0700"
-
-// Config holds the Jira Cloud connection settings.
-type Config struct {
-	BaseURL  string // e.g. https://your-org.atlassian.net
-	Email    string
-	APIToken string
-}
-
-// ConfigFromEnv reads JIRA_BASE_URL, JIRA_EMAIL and JIRA_API_TOKEN using
-// getenv. It returns ErrNotConfigured when none are set, and a descriptive
-// error when only some of them are.
-func ConfigFromEnv(getenv func(string) string) (Config, error) {
-	cfg := Config{
-		BaseURL:  strings.TrimRight(strings.TrimSpace(getenv("JIRA_BASE_URL")), "/"),
-		Email:    strings.TrimSpace(getenv("JIRA_EMAIL")),
-		APIToken: strings.TrimSpace(getenv("JIRA_API_TOKEN")),
-	}
-
-	var missing []string
-	if cfg.BaseURL == "" {
-		missing = append(missing, "JIRA_BASE_URL")
-	}
-	if cfg.Email == "" {
-		missing = append(missing, "JIRA_EMAIL")
-	}
-	if cfg.APIToken == "" {
-		missing = append(missing, "JIRA_API_TOKEN")
-	}
-
-	switch len(missing) {
-	case 0:
-		return cfg, nil
-	case 3:
-		return Config{}, ErrNotConfigured
-	default:
-		return Config{}, fmt.Errorf("jira integration disabled, missing %s", strings.Join(missing, ", "))
-	}
-}
 
 // APIError is returned when Jira responds with a non-2xx status.
 type APIError struct {
@@ -68,18 +26,18 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("jira: %s (HTTP %d)", e.Message, e.StatusCode)
 }
 
-// Client talks to the Jira Cloud REST API v3.
+// Client talks to the Jira Cloud REST API v3. It holds no credentials; every
+// call gets the requesting user's Config.
 type Client struct {
-	cfg  Config
 	http *http.Client
 }
 
-func NewClient(cfg Config) *Client {
-	return &Client{cfg: cfg, http: &http.Client{Timeout: 15 * time.Second}}
+func NewClient() *Client {
+	return &Client{http: &http.Client{Timeout: 15 * time.Second}}
 }
 
 // AddWorklog creates a worklog on req.IssueKey and returns its Jira id.
-func (c *Client) AddWorklog(ctx context.Context, req WorklogRequest) (string, error) {
+func (c *Client) AddWorklog(ctx context.Context, cfg Config, req WorklogRequest) (string, error) {
 	body := map[string]any{
 		"timeSpentSeconds": req.TimeSpentSeconds,
 		"started":          time.Unix(req.StartedUnix, 0).Format(startedLayout),
@@ -88,42 +46,73 @@ func (c *Client) AddWorklog(ctx context.Context, req WorklogRequest) (string, er
 		body["comment"] = toADF(comment)
 	}
 
-	payload, err := json.Marshal(body)
-	if err != nil {
+	var created struct {
+		Id string `json:"id"`
+	}
+	path := fmt.Sprintf("/rest/api/3/issue/%s/worklog", url.PathEscape(req.IssueKey))
+	if err := c.do(ctx, cfg, http.MethodPost, path, body, &created); err != nil {
 		return "", err
+	}
+	return created.Id, nil
+}
+
+// Myself returns the display name of the account cfg authenticates as. It is
+// used to test the connection settings.
+func (c *Client) Myself(ctx context.Context, cfg Config) (string, error) {
+	var user struct {
+		DisplayName string `json:"displayName"`
+	}
+	if err := c.do(ctx, cfg, http.MethodGet, "/rest/api/3/myself", nil, &user); err != nil {
+		if apiErr, ok := errors.AsType[*APIError](err); ok && apiErr.StatusCode == http.StatusNotFound {
+			apiErr.Message = "Jira site not found, check the Jira URL"
+		}
+		return "", err
+	}
+	return user.DisplayName, nil
+}
+
+// do sends a request to the Jira REST API at cfg.BaseURL+path, JSON-encoding
+// body when it is not nil, and decodes a 2xx JSON response into out. Non-2xx
+// responses are returned as *APIError.
+func (c *Client) do(ctx context.Context, cfg Config, method, path string, body, out any) error {
+	var reqBody io.Reader
+	if body != nil {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reqBody = bytes.NewReader(payload)
 	}
 
-	endpoint := fmt.Sprintf("%s/rest/api/3/issue/%s/worklog", c.cfg.BaseURL, url.PathEscape(req.IssueKey))
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	httpReq, err := http.NewRequestWithContext(ctx, method, cfg.BaseURL+path, reqBody)
 	if err != nil {
-		return "", err
+		return err
 	}
-	httpReq.SetBasicAuth(c.cfg.Email, c.cfg.APIToken)
-	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.SetBasicAuth(cfg.Email, cfg.APIToken)
+	if body != nil {
+		httpReq.Header.Set("Content-Type", "application/json")
+	}
 	httpReq.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return "", &APIError{StatusCode: resp.StatusCode, Message: errorMessage(resp.StatusCode, respBody)}
+		return &APIError{StatusCode: resp.StatusCode, Message: errorMessage(resp.StatusCode, respBody)}
 	}
 
-	var created struct {
-		Id string `json:"id"`
+	if err := json.Unmarshal(respBody, out); err != nil {
+		return fmt.Errorf("jira: decoding response: %w", err)
 	}
-	if err := json.Unmarshal(respBody, &created); err != nil {
-		return "", fmt.Errorf("jira: decoding response: %w", err)
-	}
-	return created.Id, nil
+	return nil
 }
 
 // toADF converts plain text to an Atlassian Document Format document, one
@@ -161,7 +150,7 @@ func errorMessage(status int, body []byte) string {
 
 	switch status {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return "Jira rejected the server credentials"
+		return "Jira rejected the credentials, check your Jira settings"
 	case http.StatusNotFound:
 		return "Issue does not exist or you do not have permission to see it"
 	}

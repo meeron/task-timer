@@ -20,3 +20,7 @@ func (db *idbDatabase) ReadTransaction(storeName string) IDBObjectStore {
 	store := db.value.Call("transaction", storeName, "readonly").Call("objectStore", storeName)
 	return &idbObjectStore{value: store}
 }
+
+func (db *idbDatabase) HasObjectStore(name string) bool {
+	return db.value.Get("objectStoreNames").Call("contains", name).Bool()
+}

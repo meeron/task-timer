@@ -81,3 +81,26 @@ func (s *idbObjectStore) GetAll() ([]app.Value, error) {
 	r := <-resultCh
 	return r.values, r.err
 }
+
+type getResult struct {
+	value app.Value
+	err   error
+}
+
+// Get returns the record stored under key, or an undefined value (check with
+// Truthy) when there is none.
+func (s *idbObjectStore) Get(key string) (app.Value, error) {
+	resultCh := make(chan getResult, 1)
+	req := s.value.Call("get", key)
+	req.Set("onerror", app.FuncOf(func(this app.Value, args []app.Value) any {
+		msg := args[0].Get("target").Get("error").Get("message").String()
+		resultCh <- getResult{err: fmt.Errorf("IndexedDB get error: %s", msg)}
+		return nil
+	}))
+	req.Set("onsuccess", app.FuncOf(func(this app.Value, args []app.Value) any {
+		resultCh <- getResult{value: args[0].Get("target").Get("result")}
+		return nil
+	}))
+	r := <-resultCh
+	return r.value, r.err
+}

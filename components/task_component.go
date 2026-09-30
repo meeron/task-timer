@@ -16,7 +16,6 @@ func (t *Task) Render() app.UI {
 		statusBorder = "border-l-slate-300"
 		timerColor = "text-slate-600"
 	}
-	jiraEnabled := app.Getenv(jira.EnabledEnvKey) == "true"
 
 	return app.Div().
 		DataSet("id", t.Id).
@@ -71,7 +70,7 @@ func (t *Task) Render() app.UI {
 							Text("Resume").
 							OnClick(t.onResume)
 					}),
-					app.If(jiraEnabled, func() app.UI {
+					app.If(t.JiraConfig.IsSet(), func() app.UI {
 						return app.Button().
 							Class("inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 active:scale-95 transition-all cursor-pointer").
 							Text("Add worklog").
@@ -100,12 +99,13 @@ func (t *Task) Render() app.UI {
 			}),
 
 			// Tailwind dialog for logging work to Jira
-			app.If(jiraEnabled && t.isLoggingWork, func() app.UI {
+			app.If(t.JiraConfig.IsSet() && t.isLoggingWork, func() app.UI {
 				return &WorklogDialog{
 					TaskName:        t.Data.Name,
 					TaskDescription: t.Data.Description,
 					Duration:        t.duration,
 					LoggedUnix:      t.Data.LoggedUnix,
+					Config:          t.JiraConfig,
 					OnLogged:        t.onWorklogAdded,
 					OnCancel:        t.onCancelWorklog,
 				}
@@ -271,8 +271,10 @@ func formatDuration(duration time.Duration) string {
 type Task struct {
 	app.Compo
 
-	Id         string
-	Data       models.Task
+	Id   string
+	Data models.Task
+	// JiraConfig is the user's Jira settings; the worklog button is shown only when set.
+	JiraConfig jira.Config
 	ticker     *time.Ticker
 	duration   time.Duration
 	isRunning  bool
