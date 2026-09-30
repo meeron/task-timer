@@ -6,6 +6,7 @@ import (
 
 	"github.com/maxence-charriere/go-app/v11/pkg/app"
 	"github.com/meeron/task-timer/models"
+	"github.com/meeron/task-timer/pkg/jira"
 )
 
 func (t *Task) Render() app.UI {
@@ -15,6 +16,7 @@ func (t *Task) Render() app.UI {
 		statusBorder = "border-l-slate-300"
 		timerColor = "text-slate-600"
 	}
+	jiraEnabled := app.Getenv(jira.EnabledEnvKey) == "true"
 
 	return app.Div().
 		DataSet("id", t.Id).
@@ -37,6 +39,12 @@ func (t *Task) Render() app.UI {
 							app.Span().Class("inline-block h-2 w-2 rounded-full bg-slate-400"),
 							app.Text("STOPPED"),
 						)
+					}),
+					app.If(t.Data.LoggedUnix != 0, func() app.UI {
+						return app.Span().
+							Class("inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200").
+							Title("Logged to Jira on " + time.Unix(t.Data.LoggedUnix, 0).Format("Jan 2, 15:04")).
+							Text("LOGGED")
 					}),
 				),
 				app.H3().Class("text-base font-semibold text-slate-900 truncate").Text(t.Data.Name),
@@ -63,6 +71,12 @@ func (t *Task) Render() app.UI {
 							Text("Resume").
 							OnClick(t.onResume)
 					}),
+					app.If(jiraEnabled, func() app.UI {
+						return app.Button().
+							Class("inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 active:scale-95 transition-all cursor-pointer").
+							Text("Add worklog").
+							OnClick(t.onAddWorklog)
+					}),
 					app.Button().
 						Class("inline-flex items-center px-2.5 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 active:scale-95 transition-all cursor-pointer").
 						Text("Edit").
@@ -82,6 +96,18 @@ func (t *Task) Render() app.UI {
 					InitialValue:    formatDurationTemplate(t.currentDuration()),
 					OnSave:          t.onSaveEdit,
 					OnCancel:        t.onCancelEdit,
+				}
+			}),
+
+			// Tailwind dialog for logging work to Jira
+			app.If(jiraEnabled && t.isLoggingWork, func() app.UI {
+				return &WorklogDialog{
+					TaskName:        t.Data.Name,
+					TaskDescription: t.Data.Description,
+					Duration:        t.duration,
+					LoggedUnix:      t.Data.LoggedUnix,
+					OnLogged:        t.onWorklogAdded,
+					OnCancel:        t.onCancelWorklog,
 				}
 			}),
 
@@ -152,6 +178,10 @@ func (t *Task) onConfirmDelete(ctx app.Context) {
 }
 
 func (t *Task) onStop(ctx app.Context, e app.Event) {
+	t.stop(ctx)
+}
+
+func (t *Task) stop(ctx app.Context) {
 	t.ticker.Stop()
 	t.isRunning = false
 
@@ -205,6 +235,24 @@ func (t *Task) onSaveEdit(ctx app.Context, newName, newDescription string, newDu
 	t.isEditing = false
 }
 
+func (t *Task) onAddWorklog(ctx app.Context, e app.Event) {
+	// Freeze the timer so the logged time matches what the task shows afterwards.
+	if t.isRunning {
+		t.stop(ctx)
+	}
+	t.isLoggingWork = true
+}
+
+func (t *Task) onCancelWorklog(ctx app.Context) {
+	t.isLoggingWork = false
+}
+
+func (t *Task) onWorklogAdded(ctx app.Context) {
+	t.Data.LoggedUnix = time.Now().Unix()
+	ctx.NewActionWithValue("saveTask", t.Data)
+	t.isLoggingWork = false
+}
+
 func formatDuration(duration time.Duration) string {
 	totalSeconds := int64(duration.Seconds())
 	if totalSeconds < 0 {
@@ -231,4 +279,6 @@ type Task struct {
 	startUnix  int64
 	isEditing  bool
 	isDeleting bool
+
+	isLoggingWork bool
 }

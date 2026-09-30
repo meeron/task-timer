@@ -2,7 +2,10 @@ module github.com/meeron/task-timer
 
 go 1.27.0
 
-require github.com/maxence-charriere/go-app/v11 v11.0.5
+require (
+	github.com/joho/godotenv v1.5.1
+	github.com/maxence-charriere/go-app/v11 v11.0.5
+)
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
@@ -18,7 +21,6 @@ require (
 	github.com/gohugoio/hashstructure v0.6.0 // indirect
 	github.com/gohugoio/hugo v0.164.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/pelletier/go-toml v1.9.5 // indirect

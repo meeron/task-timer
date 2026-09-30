@@ -61,3 +61,22 @@ func TestParseDurationInput(t *testing.T) {
 		}
 	}
 }
+
+func TestWorklogSeconds(t *testing.T) {
+	tests := []struct {
+		duration time.Duration
+		expected int64
+	}{
+		{0, 0},
+		{29 * time.Second, 0},
+		{30 * time.Second, 60},
+		{1*time.Hour + 15*time.Minute + 10*time.Second, 4500},
+		{1*time.Hour + 15*time.Minute + 40*time.Second, 4560},
+	}
+
+	for _, tc := range tests {
+		if got := worklogSeconds(tc.duration); got != tc.expected {
+			t.Errorf("worklogSeconds(%v) = %d, expected %d", tc.duration, got, tc.expected)
+		}
+	}
+}
