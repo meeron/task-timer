@@ -37,30 +37,41 @@ func TestIsValidIssueKey(t *testing.T) {
 	}
 }
 
-func TestConfigFromEnv(t *testing.T) {
-	env := func(vars map[string]string) func(string) string {
-		return func(k string) string { return vars[k] }
-	}
-
-	if _, err := ConfigFromEnv(env(nil)); !errors.Is(err, ErrNotConfigured) {
-		t.Errorf("empty env: expected ErrNotConfigured, got %v", err)
-	}
-
-	_, err := ConfigFromEnv(env(map[string]string{"JIRA_BASE_URL": "https://x.atlassian.net"}))
-	if err == nil || errors.Is(err, ErrNotConfigured) || !strings.Contains(err.Error(), "JIRA_EMAIL, JIRA_API_TOKEN") {
-		t.Errorf("partial env: expected missing-vars error, got %v", err)
-	}
-
-	cfg, err := ConfigFromEnv(env(map[string]string{
-		"JIRA_BASE_URL":  "https://x.atlassian.net/",
-		"JIRA_EMAIL":     "me@example.com",
-		"JIRA_API_TOKEN": "secret",
-	}))
+func TestNormalizeConfig(t *testing.T) {
+	valid := Config{BaseURL: " https://Your-Org.atlassian.net/jira/ ", Email: " me@example.com ", APIToken: " secret "}
+	cfg, err := NormalizeConfig(valid)
 	if err != nil {
-		t.Fatalf("full env: unexpected error %v", err)
+		t.Fatalf("valid config: unexpected error %v", err)
 	}
-	if cfg.BaseURL != "https://x.atlassian.net" {
-		t.Errorf("BaseURL = %q, expected trailing slash trimmed", cfg.BaseURL)
+	expected := Config{BaseURL: "https://your-org.atlassian.net", Email: "me@example.com", APIToken: "secret"}
+	if cfg != expected {
+		t.Errorf("NormalizeConfig = %+v, expected %+v", cfg, expected)
+	}
+
+	for _, baseURL := range []string{
+		"",
+		"your-org.atlassian.net",
+		"http://your-org.atlassian.net",
+		"https://atlassian.net",
+		"https://a.b.atlassian.net",
+		"https://your-org.atlassian.net.evil.com",
+		"https://your-org.atlassian.net:8443",
+		"https://user@your-org.atlassian.net",
+		"https://localhost",
+	} {
+		if _, err := NormalizeConfig(Config{BaseURL: baseURL, Email: "e", APIToken: "t"}); err == nil {
+			t.Errorf("NormalizeConfig(BaseURL %q): expected error", baseURL)
+		}
+	}
+
+	if _, err := NormalizeConfig(Config{BaseURL: "https://x.jira.com", Email: "e", APIToken: "t"}); err != nil {
+		t.Errorf("jira.com host: unexpected error %v", err)
+	}
+	if _, err := NormalizeConfig(Config{BaseURL: "https://x.atlassian.net", Email: " ", APIToken: "t"}); err == nil {
+		t.Error("missing email: expected error")
+	}
+	if _, err := NormalizeConfig(Config{BaseURL: "https://x.atlassian.net", Email: "e"}); err == nil {
+		t.Error("missing token: expected error")
 	}
 }
 
@@ -88,9 +99,10 @@ func TestClientAddWorklog(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(Config{BaseURL: srv.URL, Email: "me@example.com", APIToken: "secret"})
+	client := NewClient()
+	cfg := Config{BaseURL: srv.URL, Email: "me@example.com", APIToken: "secret"}
 	started := time.Date(2026, 9, 29, 9, 0, 0, 0, time.UTC)
-	id, err := client.AddWorklog(context.Background(), WorklogRequest{
+	id, err := client.AddWorklog(context.Background(), cfg, WorklogRequest{
 		IssueKey:         "ABC-123",
 		Comment:          "Did things",
 		StartedUnix:      started.Unix(),
@@ -127,8 +139,8 @@ func TestClientAddWorklogError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(Config{BaseURL: srv.URL, Email: "e", APIToken: "t"})
-	_, err := client.AddWorklog(context.Background(), WorklogRequest{IssueKey: "ABC-1", StartedUnix: 1, TimeSpentSeconds: 60})
+	client := NewClient()
+	_, err := client.AddWorklog(context.Background(), Config{BaseURL: srv.URL, Email: "e", APIToken: "t"}, WorklogRequest{IssueKey: "ABC-1", StartedUnix: 1, TimeSpentSeconds: 60})
 
 	apiErr, ok := errors.AsType[*APIError](err)
 	if !ok {
@@ -140,16 +152,21 @@ func TestClientAddWorklogError(t *testing.T) {
 }
 
 type fakeWorklogger struct {
-	got WorklogRequest
-	err error
+	gotCfg Config
+	got    WorklogRequest
+	err    error
 }
 
-func (f *fakeWorklogger) AddWorklog(_ context.Context, req WorklogRequest) (string, error) {
+func (f *fakeWorklogger) AddWorklog(_ context.Context, cfg Config, req WorklogRequest) (string, error) {
+	f.gotCfg = cfg
 	f.got = req
 	return "42", f.err
 }
 
 func TestWorklogHandler(t *testing.T) {
+	const cfg = `"config":{"baseUrl":"https://x.atlassian.net/","email":"me@example.com","apiToken":"secret"}`
+	body := func(worklog string) string { return `{` + cfg + `,"worklog":` + worklog + `}` }
+
 	tests := []struct {
 		name       string
 		body       string
@@ -157,12 +174,14 @@ func TestWorklogHandler(t *testing.T) {
 		wantStatus int
 		wantBody   string
 	}{
-		{"ok, key normalized", `{"issueKey":" abc-1 ","startedUnix":1,"timeSpentSeconds":60}`, nil, 201, `{"id":"42"}`},
+		{"ok, key normalized", body(`{"issueKey":" abc-1 ","startedUnix":1,"timeSpentSeconds":60}`), nil, 201, `{"id":"42"}`},
 		{"bad json", `{`, nil, 400, `{"error":"Invalid request body"}`},
-		{"bad key", `{"issueKey":"nope","startedUnix":1,"timeSpentSeconds":60}`, nil, 400, `{"error":"Invalid Jira issue key"}`},
-		{"too short", `{"issueKey":"ABC-1","startedUnix":1,"timeSpentSeconds":59}`, nil, 400, `{"error":"Time spent must be at least 1 minute"}`},
-		{"jira error", `{"issueKey":"ABC-1","startedUnix":1,"timeSpentSeconds":60}`, &APIError{404, "Issue does not exist"}, 502, `{"error":"Issue does not exist"}`},
-		{"network error", `{"issueKey":"ABC-1","startedUnix":1,"timeSpentSeconds":60}`, errors.New("dial tcp"), 502, `{"error":"Could not reach Jira"}`},
+		{"missing config", `{"worklog":{"issueKey":"ABC-1","startedUnix":1,"timeSpentSeconds":60}}`, nil, 400, `{"error":"Jira URL must look like https://your-org.atlassian.net"}`},
+		{"non-jira host", `{"config":{"baseUrl":"https://example.com","email":"e","apiToken":"t"},"worklog":{"issueKey":"ABC-1","startedUnix":1,"timeSpentSeconds":60}}`, nil, 400, `{"error":"Jira URL must look like https://your-org.atlassian.net"}`},
+		{"bad key", body(`{"issueKey":"nope","startedUnix":1,"timeSpentSeconds":60}`), nil, 400, `{"error":"Invalid Jira issue key"}`},
+		{"too short", body(`{"issueKey":"ABC-1","startedUnix":1,"timeSpentSeconds":59}`), nil, 400, `{"error":"Time spent must be at least 1 minute"}`},
+		{"jira error", body(`{"issueKey":"ABC-1","startedUnix":1,"timeSpentSeconds":60}`), &APIError{404, "Issue does not exist"}, 502, `{"error":"Issue does not exist"}`},
+		{"network error", body(`{"issueKey":"ABC-1","startedUnix":1,"timeSpentSeconds":60}`), errors.New("dial tcp"), 502, `{"error":"Could not reach Jira"}`},
 	}
 
 	for _, tc := range tests {
@@ -177,8 +196,109 @@ func TestWorklogHandler(t *testing.T) {
 			if got := strings.TrimSpace(rec.Body.String()); got != tc.wantBody {
 				t.Errorf("body = %s, expected %s", got, tc.wantBody)
 			}
-			if tc.wantStatus == 201 && fake.got.IssueKey != "ABC-1" {
-				t.Errorf("issue key = %q, expected normalized ABC-1", fake.got.IssueKey)
+			if tc.wantStatus == 201 {
+				if fake.got.IssueKey != "ABC-1" {
+					t.Errorf("issue key = %q, expected normalized ABC-1", fake.got.IssueKey)
+				}
+				if fake.gotCfg.BaseURL != "https://x.atlassian.net" || fake.gotCfg.APIToken != "secret" {
+					t.Errorf("config = %+v, expected normalized request config", fake.gotCfg)
+				}
+			}
+		})
+	}
+}
+
+func TestClientMyself(t *testing.T) {
+	var gotMethod, gotPath, gotUser string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		gotUser, _, _ = r.BasicAuth()
+		io.WriteString(w, `{"accountId":"abc","displayName":"Jane Doe"}`)
+	}))
+	defer srv.Close()
+
+	name, err := NewClient().Myself(context.Background(), Config{BaseURL: srv.URL, Email: "me@example.com", APIToken: "secret"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "Jane Doe" {
+		t.Errorf("name = %q, expected Jane Doe", name)
+	}
+	if gotMethod != http.MethodGet || gotPath != "/rest/api/3/myself" || gotUser != "me@example.com" {
+		t.Errorf("request = %s %s as %q", gotMethod, gotPath, gotUser)
+	}
+}
+
+func TestClientMyselfErrors(t *testing.T) {
+	tests := []struct {
+		status  int
+		body    string
+		wantMsg string
+	}{
+		{http.StatusUnauthorized, ``, "Jira rejected the credentials, check your Jira settings"},
+		{http.StatusNotFound, `<html>not found</html>`, "Jira site not found, check the Jira URL"},
+	}
+
+	for _, tc := range tests {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(tc.status)
+			io.WriteString(w, tc.body)
+		}))
+
+		_, err := NewClient().Myself(context.Background(), Config{BaseURL: srv.URL, Email: "e", APIToken: "t"})
+		srv.Close()
+
+		apiErr, ok := errors.AsType[*APIError](err)
+		if !ok {
+			t.Fatalf("HTTP %d: expected *APIError, got %v", tc.status, err)
+		}
+		if apiErr.Message != tc.wantMsg {
+			t.Errorf("HTTP %d: message = %q, expected %q", tc.status, apiErr.Message, tc.wantMsg)
+		}
+	}
+}
+
+type fakeConnectionTester struct {
+	gotCfg Config
+	err    error
+}
+
+func (f *fakeConnectionTester) Myself(_ context.Context, cfg Config) (string, error) {
+	f.gotCfg = cfg
+	return "Jane Doe", f.err
+}
+
+func TestTestHandler(t *testing.T) {
+	const cfg = `{"baseUrl":"https://x.atlassian.net/","email":"me@example.com","apiToken":"secret"}`
+
+	tests := []struct {
+		name       string
+		body       string
+		err        error
+		wantStatus int
+		wantBody   string
+	}{
+		{"ok", cfg, nil, 200, `{"displayName":"Jane Doe"}`},
+		{"bad json", `{`, nil, 400, `{"error":"Invalid request body"}`},
+		{"non-jira host", `{"baseUrl":"https://example.com","email":"e","apiToken":"t"}`, nil, 400, `{"error":"Jira URL must look like https://your-org.atlassian.net"}`},
+		{"jira error", cfg, &APIError{401, "Jira rejected the credentials, check your Jira settings"}, 502, `{"error":"Jira rejected the credentials, check your Jira settings"}`},
+		{"network error", cfg, errors.New("dial tcp"), 502, `{"error":"Could not reach Jira"}`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeConnectionTester{err: tc.err}
+			rec := httptest.NewRecorder()
+			NewTestHandler(fake).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, TestPath, strings.NewReader(tc.body)))
+
+			if rec.Code != tc.wantStatus {
+				t.Errorf("status = %d, expected %d", rec.Code, tc.wantStatus)
+			}
+			if got := strings.TrimSpace(rec.Body.String()); got != tc.wantBody {
+				t.Errorf("body = %s, expected %s", got, tc.wantBody)
+			}
+			if tc.wantStatus == 200 && fake.gotCfg.BaseURL != "https://x.atlassian.net" {
+				t.Errorf("config = %+v, expected normalized request config", fake.gotCfg)
 			}
 		})
 	}

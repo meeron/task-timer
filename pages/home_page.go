@@ -10,6 +10,7 @@ import (
 	"github.com/meeron/task-timer/components"
 	"github.com/meeron/task-timer/models"
 	"github.com/meeron/task-timer/pkg/indexeddb"
+	"github.com/meeron/task-timer/pkg/jira"
 )
 
 func (h *Home) OnMount(ctx app.Context) {
@@ -17,9 +18,14 @@ func (h *Home) OnMount(ctx app.Context) {
 	ctx.Handle("saveTask", h.onTaskSave)
 
 	ctx.Async(func() {
-		db, err := indexeddb.Open("task_timer", 1, func(db indexeddb.IDBDatabase) {
-			// Handle upgrade needed — create object store on first run / version bump.
-			db.CreateObjectStore("tasks", "id")
+		db, err := indexeddb.Open("task_timer", 2, func(db indexeddb.IDBDatabase) {
+			// Handle upgrade needed — create missing object stores on first run / version bump.
+			if !db.HasObjectStore("tasks") {
+				db.CreateObjectStore("tasks", "id")
+			}
+			if !db.HasObjectStore("settings") {
+				db.CreateObjectStore("settings", "id")
+			}
 		})
 		if err != nil {
 			app.Logf("Failed to open IndexedDB: %v", err)
@@ -29,6 +35,7 @@ func (h *Home) OnMount(ctx app.Context) {
 		ctx.Dispatch(func(c app.Context) {
 			h.db = db
 			h.loadTasks(c)
+			h.loadJiraConfig(c)
 		})
 	})
 }
@@ -40,6 +47,11 @@ func (h *Home) OnAppUpdate(ctx app.Context) {
 }
 
 func (h *Home) Render() app.UI {
+	jiraStatus, jiraStatusColor := "Not connected", "bg-slate-300"
+	if h.jiraConfig.IsSet() {
+		jiraStatus, jiraStatusColor = "Connected to "+h.jiraConfig.BaseURL, "bg-emerald-500"
+	}
+
 	return app.Main().Class("min-h-screen bg-slate-50 text-slate-800 py-10 px-4 sm:px-6 antialiased").Body(
 		app.Div().Class("max-w-2xl mx-auto space-y-6").Body(
 			// App update banner
@@ -64,9 +76,29 @@ func (h *Home) Render() app.UI {
 						app.P().Class("text-xs text-slate-500 font-medium").Text("Focus and measure your time effortlessly"),
 					),
 				),
-				app.Span().Class("text-xs font-semibold px-3 py-1 rounded-full bg-slate-200/80 text-slate-700").
-					Text(fmt.Sprintf("%d tasks", len(h.tasks))),
+				app.Div().Class("flex items-center gap-2").Body(
+					app.Button().
+						Class("inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 active:scale-95 transition-all cursor-pointer").
+						Title("Jira settings").
+						OnClick(h.onJiraSettingsClick).
+						Body(
+							app.Span().
+								Class("inline-block h-2 w-2 rounded-full "+jiraStatusColor).
+								Title(jiraStatus),
+							app.Text("Jira"),
+						),
+					app.Span().Class("text-xs font-semibold px-3 py-1 rounded-full bg-slate-200/80 text-slate-700").
+						Text(fmt.Sprintf("%d tasks", len(h.tasks))),
+				),
 			),
+
+			app.If(h.isEditingJira, func() app.UI {
+				return &components.JiraSettingsDialog{
+					Config:   h.jiraConfig,
+					OnSave:   h.onSaveJiraConfig,
+					OnCancel: h.onCancelJiraSettings,
+				}
+			}),
 
 			// Task input card
 			app.Div().Class("bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col gap-2").Body(
@@ -107,8 +139,9 @@ func (h *Home) Render() app.UI {
 					app.Range(h.tasks).Slice(func(i int) app.UI {
 						task := h.tasks[i]
 						return &components.Task{
-							Id:   task.Id,
-							Data: task,
+							Id:         task.Id,
+							Data:       task,
+							JiraConfig: h.jiraConfig,
 						}
 					}),
 				)
@@ -260,6 +293,75 @@ func taskRecord(task models.Task) map[string]any {
 	}
 }
 
+// jiraSettingsId is the key of the Jira settings record in the "settings" store.
+const jiraSettingsId = "jira"
+
+func (h *Home) onJiraSettingsClick(ctx app.Context, e app.Event) {
+	h.isEditingJira = true
+}
+
+func (h *Home) onCancelJiraSettings(ctx app.Context) {
+	h.isEditingJira = false
+}
+
+// onSaveJiraConfig persists the Jira settings; an empty config removes them.
+func (h *Home) onSaveJiraConfig(ctx app.Context, cfg jira.Config) {
+	h.isEditingJira = false
+
+	if h.db == nil {
+		app.Logf("Cannot save Jira settings: IndexedDB not ready")
+		return
+	}
+
+	h.jiraConfig = cfg
+
+	ctx.Async(func() {
+		store := h.db.WriteTransaction("settings")
+		var err error
+		if cfg.IsSet() {
+			err = store.Put(map[string]any{
+				"id":       jiraSettingsId,
+				"baseUrl":  cfg.BaseURL,
+				"email":    cfg.Email,
+				"apiToken": cfg.APIToken,
+			})
+		} else {
+			err = store.Delete(jiraSettingsId)
+		}
+		if err != nil {
+			app.Logf("Failed to save Jira settings: %v", err)
+		}
+	})
+}
+
+func (h *Home) loadJiraConfig(ctx app.Context) {
+	if h.db == nil {
+		return
+	}
+
+	ctx.Async(func() {
+		store := h.db.ReadTransaction("settings")
+		v, err := store.Get(jiraSettingsId)
+		if err != nil {
+			app.Logf("Failed to load Jira settings: %v", err)
+			return
+		}
+		if !v.Truthy() {
+			return
+		}
+
+		cfg := jira.Config{
+			BaseURL:  v.Get("baseUrl").String(),
+			Email:    v.Get("email").String(),
+			APIToken: v.Get("apiToken").String(),
+		}
+
+		ctx.Dispatch(func(c app.Context) {
+			h.jiraConfig = cfg
+		})
+	})
+}
+
 type Home struct {
 	app.Compo
 
@@ -268,4 +370,6 @@ type Home struct {
 	updateAvailable    bool
 	tasks              []models.Task
 	db                 indexeddb.IDBDatabase
+	jiraConfig         jira.Config
+	isEditingJira      bool
 }

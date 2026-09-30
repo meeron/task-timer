@@ -8,6 +8,7 @@ import (
 
 type IDBDatabase interface {
 	CreateObjectStore(name string, keyPath string) IDBObjectStore
+	HasObjectStore(name string) bool
 	WriteTransaction(storeName string) IDBObjectStore
 	ReadTransaction(storeName string) IDBObjectStore
 }
@@ -16,6 +17,7 @@ type IDBObjectStore interface {
 	Add(record map[string]any) error
 	Put(record map[string]any) error
 	Delete(key string) error
+	Get(key string) (app.Value, error)
 	GetAll() ([]app.Value, error)
 }
 

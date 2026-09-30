@@ -11,7 +11,7 @@ A modern, lightweight Progressive Web Application (PWA) for tracking task time e
 - ✏️ **Edit Task**: Rename a task and adjust or set its timer duration directly from the task card. Accepts multiple input formats (see [Edit Timer formats](#edit-timer-formats)).
 - 🔂 **Single Active Timer**: Starting or resuming a task automatically stops any other running task, keeping you focused on one thing at a time.
 - 🗑️ **Delete with Confirmation**: Remove tasks through a confirmation dialog to prevent accidental deletions.
-- 📝 **Jira Worklogs** *(optional)*: Log a task's time and description as a worklog on a Jira Cloud issue (task name = issue key). See [Jira Integration](#jira-integration).
+- 📝 **Jira Worklogs** *(optional)*: Log a task's time and description as a worklog on a Jira Cloud issue (task name = issue key), configured in the app. See [Jira Integration](#jira-integration).
 - 💾 **Local Persistence**: Tasks are persisted across sessions in the browser's **IndexedDB** via a lightweight custom Go wrapper (`pkg/indexeddb`).
 - 📱 **Progressive Web App (PWA)**: Installable, responsive, with built-in app update notifications.
 - 🎨 **Clean UI**: Crafted with modern Tailwind CSS v4 styling, badges, and responsive layouts.
@@ -110,30 +110,19 @@ The app will be available at `http://localhost:8080`.
 
 ## Jira Integration
 
-The integration is optional. It is enabled only when **all three** environment variables are set on the server; otherwise the **Add worklog** button is hidden and the proxy endpoint is not registered. If only some are set, a warning is logged at startup.
+The integration is optional and configured per user in the app — no server setup is needed. Click **Jira** in the header and enter:
 
-| Variable         | Example                         |
-| ---------------- | ------------------------------- |
-| `JIRA_BASE_URL`  | `https://your-org.atlassian.net` |
-| `JIRA_EMAIL`     | `you@example.com`               |
-| `JIRA_API_TOKEN` | [Atlassian API token](https://id.atlassian.com/manage-profile/security/api-tokens) |
+| Setting         | Example                          |
+| --------------- | -------------------------------- |
+| Jira URL        | `https://your-org.atlassian.net` |
+| Email           | `you@example.com`                |
+| API token       | [Atlassian API token](https://id.atlassian.com/manage-profile/security/api-tokens) |
 
-For local development, put them in a `.env` file in the project root (gitignored and excluded from Docker builds). Real environment variables take precedence over `.env`, and Air restarts the server when `.env` changes:
+The settings are stored in the browser's IndexedDB (object store `settings`, separate from tasks) and never on the server. **Test connection** checks the entered values before saving by fetching the Jira account they authenticate as. Once they are saved, every task gets an **Add worklog** button; **Disconnect** in the same dialog removes them.
 
-```bash
-cp .env.example .env   # then fill in JIRA_API_TOKEN
-make run
-```
+Name a task after its issue key (e.g. `ABC-123`) and click **Add worklog**. A running task is stopped first; the dialog is prefilled with the key, description and elapsed time (rounded to whole minutes). Jira Cloud rejects cross-origin API-token requests, so the browser posts the worklog together with the user's settings to the server's stateless `/api/jira/worklog` proxy, which calls the Jira Cloud REST API v3. To keep the proxy from being used against arbitrary hosts, it only accepts `https://<site>.atlassian.net` (or `.jira.com`) URLs. Logged tasks get a **LOGGED** badge.
 
-In Docker, pass them as environment variables:
-
-```bash
-docker run -p 8080:8080 -e JIRA_BASE_URL=... -e JIRA_EMAIL=... -e JIRA_API_TOKEN=... task-timer
-```
-
-Name a task after its issue key (e.g. `ABC-123`) and click **Add worklog**. A running task is stopped first; the dialog is prefilled with the key, description and elapsed time (rounded to whole minutes). The browser posts to the server's `/api/jira/worklog` proxy, which calls the Jira Cloud REST API v3 — the API token never reaches the browser. Logged tasks get a **LOGGED** badge.
-
-> The enabled flag is baked into the cached PWA shell, so after changing the variables and restarting the server, use the in-app *Update now* banner (or reload) to pick it up.
+> The API token is stored unencrypted in the browser profile — use a dedicated token and revoke it if the device is shared.
 
 ---
 
@@ -173,6 +162,7 @@ task-timer/
 │   ├── task_component_test.go     # Unit tests for task component helpers
 │   ├── edit_dialog_component.go   # Modal dialog for editing timer duration
 │   ├── worklog_dialog_component.go # Modal dialog for adding a Jira worklog
+│   ├── jira_settings_dialog_component.go # Modal dialog for per-user Jira settings
 │   └── delete_dialog_component.go # Modal dialog for confirming task deletion
 ├── models/                        # Data structures
 │   └── models.go                  # Task model definition
