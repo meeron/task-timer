@@ -19,13 +19,16 @@ RUN pnpm install --frozen-lockfile
 # Copy the rest of the source
 COPY . .
 
-# 1. Build the WASM client bundle
+# 1. Run the test suite (fails the build on test failures)
+RUN go test ./...
+
+# 2. Build the WASM client bundle
 RUN GOARCH=wasm GOOS=js go build -o web/app.wasm
 
-# 2. Compile Tailwind CSS
+# 3. Compile Tailwind CSS
 RUN pnpm exec tailwindcss -i styles/main.css -o web/styles.css
 
-# 3. Build the server binary (statically linked for Alpine)
+# 4. Build the server binary (statically linked for Alpine)
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o bin/task-timer .
 
 # =============================================================================
