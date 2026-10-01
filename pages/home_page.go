@@ -2,6 +2,7 @@ package pages
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -140,6 +141,13 @@ func (h *Home) Render() app.UI {
 					app.H3().Class("text-base font-semibold text-slate-700").Text("No tasks yet"),
 					app.P().Class("text-xs text-slate-400 mt-1 max-w-xs mx-auto").Text("Add your first task above and click 'Start task' to begin tracking time."),
 				)
+			}),
+
+			app.If(len(h.tasks) > 0, func() app.UI {
+				return &components.TimeSummary{
+					// A copy, since onTaskSave updates h.tasks in place.
+					Tasks: slices.Clone(h.tasks),
+				}
 			}),
 
 			app.If(len(h.tasks) > 0, func() app.UI {
