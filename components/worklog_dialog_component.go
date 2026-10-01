@@ -16,9 +16,12 @@ type WorklogDialog struct {
 	Duration        time.Duration
 	LoggedUnix      int64
 	Config          jira.Config
-	OnLogged        func(ctx app.Context)
-	OnCancel        func(ctx app.Context)
+	// OnLogged is called after the worklog is added; deleteTask reports whether
+	// the user asked to delete the task afterwards.
+	OnLogged func(ctx app.Context, deleteTask bool)
+	OnCancel func(ctx app.Context)
 
+	deleteAfter bool
 	issueKey    string
 	keyErrorMsg string
 	description string
@@ -39,6 +42,7 @@ func (d *WorklogDialog) OnMount(ctx app.Context) {
 	d.errorMsg = ""
 	d.submitErr = ""
 	d.submitting = false
+	d.deleteAfter = true
 }
 
 func (d *WorklogDialog) Render() app.UI {
@@ -128,6 +132,19 @@ func (d *WorklogDialog) Render() app.UI {
 						}),
 					),
 
+					// Delete task after logging
+					app.Label().Class("flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer select-none").Body(
+						app.Input().
+							Type("checkbox").
+							Class("h-4 w-4 rounded border-slate-300 accent-indigo-600 cursor-pointer").
+							Checked(d.deleteAfter).
+							Disabled(d.submitting).
+							OnChange(func(ctx app.Context, e app.Event) {
+								d.deleteAfter = ctx.JSSrc().Get("checked").Bool()
+							}),
+						app.Text("Delete task after logging work"),
+					),
+
 					app.If(d.submitErr != "", func() app.UI {
 						return app.P().Class("text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2").Text(d.submitErr)
 					}),
@@ -205,7 +222,7 @@ func (d *WorklogDialog) handleSubmit(ctx app.Context, e app.Event) {
 				return
 			}
 			if d.OnLogged != nil {
-				d.OnLogged(c)
+				d.OnLogged(c, d.deleteAfter)
 			}
 		})
 	})

@@ -135,12 +135,19 @@ func (t *Task) OnMount(ctx app.Context) {
 	t.startUnix = t.Data.StartUnix
 	t.ticker = time.NewTicker(1 * time.Second)
 	t.ticker.Stop()
+	t.done = make(chan struct{})
+	ticker, done := t.ticker, t.done
 
 	ctx.Async(func() {
-		for current := range t.ticker.C {
-			ctx.Dispatch(func(c app.Context) {
-				t.duration = time.Second * time.Duration(current.Unix()-t.startUnix)
-			})
+		for {
+			select {
+			case <-done:
+				return
+			case current := <-ticker.C:
+				ctx.Dispatch(func(c app.Context) {
+					t.duration = time.Second * time.Duration(current.Unix()-t.startUnix)
+				})
+			}
 		}
 	})
 
@@ -162,6 +169,16 @@ func (t *Task) OnMount(ctx app.Context) {
 
 	t.duration = time.Second * time.Duration(time.Now().Unix()-t.Data.StartUnix)
 	t.ticker.Reset(1 * time.Second)
+}
+
+// OnDismount stops the ticker and its goroutine; Stop alone doesn't close the
+// ticker channel, so the goroutine would otherwise block on it forever.
+func (t *Task) OnDismount() {
+	if t.done != nil {
+		t.ticker.Stop()
+		close(t.done)
+		t.done = nil
+	}
 }
 
 func (t *Task) onDelete(ctx app.Context, e app.Event) {
@@ -247,7 +264,12 @@ func (t *Task) onCancelWorklog(ctx app.Context) {
 	t.isLoggingWork = false
 }
 
-func (t *Task) onWorklogAdded(ctx app.Context) {
+func (t *Task) onWorklogAdded(ctx app.Context, deleteTask bool) {
+	if deleteTask {
+		t.isLoggingWork = false
+		ctx.NewActionWithValue("deleteTask", t.Id)
+		return
+	}
 	t.Data.LoggedUnix = time.Now().Unix()
 	ctx.NewActionWithValue("saveTask", t.Data)
 	t.isLoggingWork = false
@@ -276,6 +298,7 @@ type Task struct {
 	// JiraConfig is the user's Jira settings; the worklog button is shown only when set.
 	JiraConfig jira.Config
 	ticker     *time.Ticker
+	done       chan struct{}
 	duration   time.Duration
 	isRunning  bool
 	startUnix  int64
