@@ -247,7 +247,12 @@ func (t *Task) onCancelWorklog(ctx app.Context) {
 	t.isLoggingWork = false
 }
 
-func (t *Task) onWorklogAdded(ctx app.Context) {
+func (t *Task) onWorklogAdded(ctx app.Context, deleteTask bool) {
+	if deleteTask {
+		t.isLoggingWork = false
+		ctx.NewActionWithValue("deleteTask", t.Id)
+		return
+	}
 	t.Data.LoggedUnix = time.Now().Unix()
 	ctx.NewActionWithValue("saveTask", t.Data)
 	t.isLoggingWork = false
