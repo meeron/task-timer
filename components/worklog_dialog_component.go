@@ -29,9 +29,14 @@ type WorklogDialog struct {
 	errorMsg    string
 	submitErr   string
 	submitting  bool
+
+	// compoCtx outlives the clicked button, whose event context stops
+	// dispatching once a re-render replaces it (see JiraSettingsDialog).
+	compoCtx app.Context
 }
 
 func (d *WorklogDialog) OnMount(ctx app.Context) {
+	d.compoCtx = ctx
 	d.issueKey = strings.ToUpper(strings.TrimSpace(d.TaskName))
 	d.keyErrorMsg = ""
 	if !jira.IsValidIssueKey(d.issueKey) {
@@ -213,9 +218,10 @@ func (d *WorklogDialog) handleSubmit(ctx app.Context, e app.Event) {
 	}
 
 	d.submitting = true
-	ctx.Async(func() {
+	compoCtx := d.compoCtx
+	compoCtx.Async(func() {
 		err := postJiraProxy(jira.WorklogPath, jira.ProxyRequest{Config: d.Config, Worklog: req}, nil)
-		ctx.Dispatch(func(c app.Context) {
+		compoCtx.Dispatch(func(c app.Context) {
 			d.submitting = false
 			if err != nil {
 				d.submitErr = err.Error()
