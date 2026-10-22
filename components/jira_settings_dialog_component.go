@@ -21,9 +21,15 @@ type JiraSettingsDialog struct {
 
 	testing    bool
 	testResult string
+
+	// compoCtx is the component's own context. Event contexts are tied to the
+	// element that fired the event, and Dispatch is dropped once that element
+	// is replaced by a re-render (e.g. the button after an error shows up).
+	compoCtx app.Context
 }
 
 func (d *JiraSettingsDialog) OnMount(ctx app.Context) {
+	d.compoCtx = ctx
 	d.baseURL = d.Config.BaseURL
 	d.email = d.Config.Email
 	d.apiToken = d.Config.APIToken
@@ -190,10 +196,11 @@ func (d *JiraSettingsDialog) handleTest(ctx app.Context, e app.Event) {
 	}
 
 	d.testing = true
-	ctx.Async(func() {
+	compoCtx := d.compoCtx
+	compoCtx.Async(func() {
 		var resp jira.TestResponse
 		err := postJiraProxy(jira.TestPath, cfg, &resp)
-		ctx.Dispatch(func(c app.Context) {
+		compoCtx.Dispatch(func(c app.Context) {
 			d.testing = false
 			if err != nil {
 				d.errorMsg = err.Error()
