@@ -30,8 +30,8 @@ type WorklogDialog struct {
 	submitErr   string
 	submitting  bool
 
-	// compoCtx outlives the clicked button, whose event context stops
-	// dispatching once a re-render replaces it (see JiraSettingsDialog).
+	// compoCtx is used for async work: unlike an event context, it is not
+	// tied to an element a re-render could replace.
 	compoCtx app.Context
 }
 
@@ -104,9 +104,7 @@ func (d *WorklogDialog) Render() app.UI {
 							OnInput(d.ValueTo(&d.issueKey)).
 							OnChange(d.ValueTo(&d.issueKey)).
 							OnKeyDown(d.onKeyDown),
-						app.If(d.keyErrorMsg != "", func() app.UI {
-							return app.P().Class("text-xs text-red-600 font-medium").Text(d.keyErrorMsg)
-						}),
+						message("text-xs text-red-600 font-medium", d.keyErrorMsg),
 					),
 
 					// Description field
@@ -132,9 +130,7 @@ func (d *WorklogDialog) Render() app.UI {
 							OnInput(d.ValueTo(&d.input)).
 							OnChange(d.ValueTo(&d.input)).
 							OnKeyDown(d.onKeyDown),
-						app.If(d.errorMsg != "", func() app.UI {
-							return app.P().Class("text-xs text-red-600 font-medium").Text(d.errorMsg)
-						}),
+						message("text-xs text-red-600 font-medium", d.errorMsg),
 					),
 
 					// Delete task after logging
@@ -150,9 +146,7 @@ func (d *WorklogDialog) Render() app.UI {
 						app.Text("Delete task after logging work"),
 					),
 
-					app.If(d.submitErr != "", func() app.UI {
-						return app.P().Class("text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2").Text(d.submitErr)
-					}),
+					message("text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2", d.submitErr),
 
 					// Action buttons
 					app.Div().Class("flex items-center justify-end gap-2 pt-2 border-t border-slate-100").Body(
@@ -218,10 +212,10 @@ func (d *WorklogDialog) handleSubmit(ctx app.Context, e app.Event) {
 	}
 
 	d.submitting = true
-	compoCtx := d.compoCtx
-	compoCtx.Async(func() {
-		err := postJiraProxy(jira.WorklogPath, jira.ProxyRequest{Config: d.Config, Worklog: req}, nil)
-		compoCtx.Dispatch(func(c app.Context) {
+	proxyReq := jira.ProxyRequest{Config: d.Config, Worklog: req}
+	d.compoCtx.Async(func() {
+		err := postJiraProxy(jira.WorklogPath, proxyReq, nil)
+		d.compoCtx.Dispatch(func(c app.Context) {
 			d.submitting = false
 			if err != nil {
 				d.submitErr = err.Error()

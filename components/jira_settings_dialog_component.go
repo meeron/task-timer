@@ -22,9 +22,8 @@ type JiraSettingsDialog struct {
 	testing    bool
 	testResult string
 
-	// compoCtx is the component's own context. Event contexts are tied to the
-	// element that fired the event, and Dispatch is dropped once that element
-	// is replaced by a re-render (e.g. the button after an error shows up).
+	// compoCtx is used for async work: unlike an event context, it is not
+	// tied to an element a re-render could replace.
 	compoCtx app.Context
 }
 
@@ -122,12 +121,8 @@ func (d *JiraSettingsDialog) Render() app.UI {
 						),
 					),
 
-					app.If(d.errorMsg != "", func() app.UI {
-						return app.P().Class("text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2").Text(d.errorMsg)
-					}),
-					app.If(d.testResult != "", func() app.UI {
-						return app.P().Class("text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2").Text(d.testResult)
-					}),
+					message("text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2", d.errorMsg),
+					message("text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2", d.testResult),
 
 					// Connection test
 					app.Button().
@@ -169,6 +164,11 @@ func (d *JiraSettingsDialog) handleCancel(ctx app.Context, e app.Event) {
 }
 
 func (d *JiraSettingsDialog) handleSave(ctx app.Context, e app.Event) {
+	// Wait for a running test so its result (e.g. rejected credentials) is
+	// seen before saving.
+	if d.testing {
+		return
+	}
 	cfg, err := jira.NormalizeConfig(jira.Config{BaseURL: d.baseURL, Email: d.email, APIToken: d.apiToken})
 	if err != nil {
 		d.errorMsg = err.Error()
@@ -196,12 +196,16 @@ func (d *JiraSettingsDialog) handleTest(ctx app.Context, e app.Event) {
 	}
 
 	d.testing = true
-	compoCtx := d.compoCtx
-	compoCtx.Async(func() {
+	d.compoCtx.Async(func() {
 		var resp jira.TestResponse
 		err := postJiraProxy(jira.TestPath, cfg, &resp)
-		compoCtx.Dispatch(func(c app.Context) {
+		d.compoCtx.Dispatch(func(c app.Context) {
 			d.testing = false
+			// Drop the result if the fields were edited while testing; it
+			// would describe settings that are no longer entered.
+			if current, _ := jira.NormalizeConfig(jira.Config{BaseURL: d.baseURL, Email: d.email, APIToken: d.apiToken}); current != cfg {
+				return
+			}
 			if err != nil {
 				d.errorMsg = err.Error()
 				return
