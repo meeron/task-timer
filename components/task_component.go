@@ -53,11 +53,11 @@ func (t *Task) Render() app.UI {
 			),
 
 			// Right side: Timer display & Action buttons
-			app.Div().Class("flex flex-wrap items-center sm:justify-end gap-3 sm:gap-4").Body(
+			app.Div().Class("flex flex-col items-start sm:items-end gap-3").Body(
 				app.Span().Class("font-mono text-xl font-bold tracking-tight px-3 py-1 bg-slate-50 rounded-lg border border-slate-200 "+timerColor).
 					Text(formatDuration(t.duration)),
 
-				app.Div().Class("flex items-center gap-1.5").Body(
+				app.Div().Class("flex flex-wrap items-center sm:justify-end gap-1.5").Body(
 					app.If(t.isRunning, func() app.UI {
 						return app.Button().
 							Class("inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600 active:scale-95 transition-all shadow-xs cursor-pointer").
